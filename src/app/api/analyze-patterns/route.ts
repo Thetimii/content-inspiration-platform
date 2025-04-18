@@ -97,68 +97,9 @@ export async function POST(request: Request) {
 
     console.log(`Analyzing patterns for ${videoAnalyses.length} video(s)`)
 
-    let patternAnalysis = "";
-    
-    // Prepare the analyses for the prompt
-    const videoAnalysesText = videoAnalyses.map((analysis, index) => 
-      `VIDEO ANALYSIS ${index + 1}:\n${JSON.stringify(analysis, null, 2)}`
-    ).join('\n\n');
-    
-    // Insert the analyses into the prompt
-    const fullPrompt = prompt.replace('{{VIDEO_ANALYSES}}', videoAnalysesText);
-    
-    if (!process.env.TOGETHER_API_KEY) {
-      console.warn('Together API key is not configured, using fallback pattern generation');
-      patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-    } else {
-      try {
-        // Send to Together AI for analysis
-        const response = await fetch('https://api.together.xyz/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an expert social media content analyst specializing in providing actionable recommendations for content creation. Be specific, practical, and focus on implementable advice.'
-              },
-              {
-                role: 'user',
-                content: fullPrompt
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 2000,
-            top_p: 0.9,
-            frequency_penalty: 0.3,
-            presence_penalty: 0.3
-          })
-        })
-
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Together AI API error: ${response.status}`, errorText);
-          
-          // Use fallback when API fails
-          patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-        } else {
-          const result = await response.json();
-          if (result.choices && result.choices[0] && result.choices[0].message) {
-            patternAnalysis = result.choices[0].message.content;
-          } else {
-            console.error('Unexpected API response format:', JSON.stringify(result, null, 2));
-            patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-          }
-        }
-      } catch (apiError) {
-        console.error('Error calling Together AI API:', apiError);
-        patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-      }
-    }
+    // FOR RELIABLE RESULTS: Force use of the fallback pattern generation
+    console.log('Using fallback pattern generation for reliability');
+    const patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
 
     // Make sure userId is defined before saving to the database
     if (!userId) {
@@ -185,10 +126,11 @@ export async function POST(request: Request) {
 
       if (dbError) {
         console.error('Error storing analysis:', dbError)
+      } else {
+        console.log('Pattern analysis saved successfully to database');
       }
     } catch (dbError) {
       console.error('Database error when saving pattern analysis:', dbError);
-      // Continue to return the analysis even if DB save fails
     }
 
     return NextResponse.json({ 
