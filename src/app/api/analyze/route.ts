@@ -61,20 +61,44 @@ export async function POST(request: Request) {
       console.log('video-analyzer stderr:', text)
     })
 
+    // Add timeout for the analyzer process
+    let analyzerTimeout: NodeJS.Timeout | null = null;
+    
     // Wait for the analyzer to complete
     await new Promise<void>((resolve, reject) => {
+      // Set a timeout of 60 seconds to kill the process if it takes too long
+      analyzerTimeout = setTimeout(() => {
+        if (analyzer.pid) {
+          try {
+            process.kill(analyzer.pid);
+          } catch (error) {
+            console.error('Error killing analyzer process:', error);
+          }
+        }
+        reject(new Error('Analysis timed out after 60 seconds'));
+      }, 60000);
+      
       analyzer.on('close', (code) => {
+        if (analyzerTimeout) clearTimeout(analyzerTimeout);
         console.log(`Analyzer process exited with code ${code}`)
         if (code !== 0) {
           console.error('STDERR:', errorText)
+          reject(new Error(`Analyzer process failed with code ${code}: ${errorText}`))
+        } else {
+          resolve()
         }
-        resolve()
       })
+      
       analyzer.on('error', (err) => {
+        if (analyzerTimeout) clearTimeout(analyzerTimeout);
         console.error('Analyzer process error:', err)
         reject(err)
       })
-    })
+    }).catch(error => {
+      console.error('Analysis process error:', error);
+      // Continue with backup plan or return an error
+      throw new Error(`Video analysis failed: ${error.message}`);
+    });
 
     // Read the analysis from the output file
     const analysisFilePath = path.join(outputDir, 'analysis.json')

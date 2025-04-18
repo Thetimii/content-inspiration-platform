@@ -5,6 +5,18 @@ import { supabase } from '@/lib/supabase'
 import { searchTikTokVideos } from '@/lib/tiktok'
 import { BusinessContext, TikTokVideo } from '@/types/analysis'
 
+// Get the base URL based on environment
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return window.location.origin;
+  }
+  // Server-side
+  return process.env.VERCEL_URL ? 
+    `https://${process.env.VERCEL_URL}` : 
+    'http://localhost:3000';
+};
+
 export default function Videos() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -14,9 +26,31 @@ export default function Videos() {
   const [videosPerHashtag, setVideosPerHashtag] = useState(2)
   const [allAnalyses, setAllAnalyses] = useState<any[]>([])
 
-  const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string) => {
+  // Add a simple fallback analysis function
+  const generateFallbackAnalysis = (video: TikTokVideo, query: string) => {
+    return {
+      title: video.title,
+      analysis: `Video analysis could not be completed on the server. 
+      
+This is a fallback analysis for video titled "${video.title}" by ${video.author}.
+      
+Video statistics:
+- Views: ${video.stats.play_count}
+- Likes: ${video.stats.like_count}
+- Comments: ${video.stats.comment_count}
+- Shares: ${video.stats.share_count}
+
+Search query: "${query}"
+
+This video was identified as potentially relevant content for your business. 
+For best results, watch the video and consider how elements could be adapted for your own content strategy.`
+    };
+  };
+
+  const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string, video: TikTokVideo) => {
     try {
-      const response = await fetch('/api/analyze', {
+      const baseUrl = getBaseUrl();
+      const response = await fetch(`${baseUrl}/api/analyze`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -30,18 +64,21 @@ export default function Videos() {
       })
 
       if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.statusText}`)
+        console.warn(`Analysis server error: ${response.status} ${response.statusText}`);
+        return generateFallbackAnalysis(video, searchQuery);
       }
 
       const data = await response.json()
       if (!data.success) {
-        throw new Error(data.error)
+        console.warn(`Analysis error: ${data.error}`);
+        return generateFallbackAnalysis(video, searchQuery);
       }
 
       return data.result
     } catch (error) {
       console.error('Error analyzing video:', error)
-      throw error
+      // Return fallback analysis instead of throwing
+      return generateFallbackAnalysis(video, searchQuery);
     }
   }
 
@@ -140,7 +177,8 @@ export default function Videos() {
               video.download_url, 
               video.video_id,
               session.user.id,
-              hashtag
+              hashtag,
+              video
             )
             analysisResults.push(analysisResult)
 
@@ -155,7 +193,8 @@ export default function Videos() {
       if (analysisResults.length > 0) {
         setProgress('Analyzing patterns across videos...')
         try {
-          const patternResponse = await fetch('/api/analyze-patterns', {
+          const baseUrl = getBaseUrl();
+          const patternResponse = await fetch(`${baseUrl}/api/analyze-patterns`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

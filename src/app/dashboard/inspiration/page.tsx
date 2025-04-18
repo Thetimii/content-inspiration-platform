@@ -5,6 +5,18 @@ import { SparklesIcon, ArrowPathIcon } from '@heroicons/react/24/outline'
 import { supabase } from '@/lib/supabase'
 import { formatDistanceToNow } from 'date-fns'
 
+// Get the base URL based on environment
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return window.location.origin;
+  }
+  // Server-side
+  return process.env.VERCEL_URL ? 
+    `https://${process.env.VERCEL_URL}` : 
+    'http://localhost:3000';
+};
+
 interface PatternAnalysis {
   id: string
   user_id: string
