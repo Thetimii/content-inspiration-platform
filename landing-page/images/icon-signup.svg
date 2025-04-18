@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="64px" height="64px" viewBox="0 0 64 64" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <title>Sign Up Icon</title>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <circle fill="#F0F4FF" cx="32" cy="32" r="32"></circle>
+        <g transform="translate(16.000000, 16.000000)" stroke="#4361EE" stroke-linecap="round" stroke-linejoin="round" stroke-width="2">
+            <circle cx="16" cy="8" r="8"></circle>
+            <path d="M30,32 C30,25.373 23.732,20 16,20 C8.268,20 2,25.373 2,32"></path>
+            <path d="M16,32 L16,24 M12,28 L20,28"></path>
+        </g>
+    </g>
+</svg>

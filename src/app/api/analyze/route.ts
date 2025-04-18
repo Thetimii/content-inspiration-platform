@@ -1,8 +1,5 @@
 import { NextResponse } from 'next/server'
-import { spawn, type ChildProcess } from 'child_process'
 import { createClient } from '@supabase/supabase-js'
-import { promises as fs } from 'fs'
-import path from 'path'
 
 // Initialize Supabase client
 const supabase = createClient(
@@ -10,22 +7,35 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// Video Analyzer API URL
+const VIDEO_ANALYZER_API_URL = process.env.VIDEO_ANALYZER_API_URL || 'https://video-analyzer-api-xxxxx-xx.a.run.app'
+
 export async function POST(request: Request) {
   try {
     const { videoUrl, videoId, userId, searchQuery } = await request.json()
     console.log('Starting video analysis:', { videoUrl, videoId, userId })
 
+    if (!videoUrl || !videoId || !userId) {
+      return NextResponse.json({
+        success: false,
+        error: 'Missing required parameters: videoUrl, videoId, or userId'
+      }, { status: 400 })
+    }
+
     // Store video metadata in temp_videos table
+    // Create a placeholder buffer for file_data since it can't be null
+    const placeholderBuffer = new Uint8Array(1); // 1-byte placeholder
+
     const { error: insertError } = await supabase
       .from('temp_videos')
       .insert({
         user_id: userId,
         video_id: videoId,
         file_name: `${videoId}.mp4`,
-        file_data: null, // Not storing the actual file data
+        file_data: placeholderBuffer, // Using placeholder instead of null
         content_type: 'video/mp4'
       })
-    
+
     if (insertError) {
       console.warn(`Warning: Failed to store video metadata: ${insertError.message}`)
       // Continue with analysis even if metadata storage fails
@@ -33,73 +43,40 @@ export async function POST(request: Request) {
       console.log('Video metadata stored in database successfully')
     }
 
-    // Ensure output directory exists
-    const outputDir = path.join(process.cwd(), 'output')
-    await fs.mkdir(outputDir, { recursive: true })
+    // Call the Video Analyzer API
+    console.log('Calling Video Analyzer API with URL:', videoUrl)
 
-    // Run video-analyzer directly on the URL
-    const analyzer: ChildProcess = spawn('video-analyzer', [
-      videoUrl,
-      '--client', 'openai_api',
-      '--api-key', process.env.TOGETHER_API_KEY!,
-      '--api-url', 'https://api.together.xyz/v1',
-      '--model', 'meta-llama/Llama-Vision-Free',
-      '--max-frames', '2',
-      '--duration', '60',
-      '--log-level', 'INFO',
-      '--whisper-model', 'medium',
-      '--temperature', '0.7',
-      '--prompt', 'Analyze this TikTok video and provide insights about: 1. Main activities shown 2. Visual elements and equipment 3. Style and techniques 4. Target audience 5. Key tips. Keep the analysis concise.'
-    ])
-
-    let errorText = ''
-
-    // Collect stderr for logging
-    analyzer.stderr?.on('data', (data) => {
-      const text = data.toString()
-      errorText += text
-      console.log('video-analyzer stderr:', text)
+    const analyzerResponse = await fetch(`${VIDEO_ANALYZER_API_URL}/analyze`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url: videoUrl }),
     })
 
-    // Wait for the analyzer to complete
-    await new Promise<void>((resolve, reject) => {
-      analyzer.on('close', (code) => {
-        console.log(`Analyzer process exited with code ${code}`)
-        if (code !== 0) {
-          console.error('STDERR:', errorText)
-        }
-        resolve()
+    if (!analyzerResponse.ok) {
+      const errorText = await analyzerResponse.text()
+      console.error('Video Analyzer API error:', {
+        status: analyzerResponse.status,
+        statusText: analyzerResponse.statusText,
+        body: errorText
       })
-      analyzer.on('error', (err) => {
-        console.error('Analyzer process error:', err)
-        reject(err)
-      })
-    })
-
-    // Read the analysis from the output file
-    const analysisFilePath = path.join(outputDir, 'analysis.json')
-    console.log('Reading analysis from:', analysisFilePath)
-    
-    let analysisText
-    try {
-      const fileContent = await fs.readFile(analysisFilePath, 'utf-8')
-      const analysisJson = JSON.parse(fileContent)
-      
-      // Extract only the video_description section
-      if (analysisJson.video_description?.response) {
-        analysisText = analysisJson.video_description.response
-        console.log('Successfully extracted video description')
-      } else {
-        throw new Error('Video description not found in analysis output')
-      }
-    } catch (error) {
-      console.error('Error reading/parsing analysis file:', error)
-      throw new Error('Failed to read or parse analysis output file')
+      throw new Error(`Video analysis service error: ${analyzerResponse.status} - ${errorText}`)
     }
 
-    // Always try to save the analysis, even if it's partial
+    // Get the analysis result
+    const analysisData = await analyzerResponse.json()
+    const analysisText = analysisData.description
+
+    if (!analysisText) {
+      console.error('API response:', analysisData)
+      throw new Error('No video description returned from the API')
+    }
+
+    console.log('Successfully received video description from API')
+
+    // Save the analysis to Supabase
     console.log('Saving analysis to Supabase for video ID:', videoId)
-    console.log('Analysis text to save:', analysisText)
 
     const { error: saveError } = await supabase
       .from('video_analysis')
@@ -121,13 +98,7 @@ export async function POST(request: Request) {
       }, { status: 500 })
     }
 
-    // Clean up the output file
-    try {
-      await fs.unlink(analysisFilePath)
-      console.log('Cleaned up analysis file')
-    } catch (error) {
-      console.warn('Warning: Could not clean up analysis file:', error)
-    }
+    // No cleanup needed when using the API
 
     return NextResponse.json({
       success: true,
@@ -140,4 +111,4 @@ export async function POST(request: Request) {
       error: error instanceof Error ? error.message : 'Unknown error occurred'
     }, { status: 500 })
   }
-} 
+}
