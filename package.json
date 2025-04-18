@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "bash scripts/vercel-build.sh && next build",
+    "build": "python3 -m pip install git+https://github.com/byjlw/video-analyzer.git || echo 'Failed to install video-analyzer, but continuing build' && next build",
     "start": "next start",
     "lint": "next lint"
   },

@@ -14,115 +14,17 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
-// Check if video-analyzer is installed and working
-async function isVideoAnalyzerInstalled() {
-  try {
-    // Try to run video-analyzer with --version flag
-    await execAsync('video-analyzer --version')
-    return true
-  } catch (error) {
-    console.warn('video-analyzer not installed or not in PATH:', error)
-    
-    // Try to check if it's installed in the Python user site packages
-    try {
-      const { stdout } = await execAsync('python3 -m site --user-base')
-      const userBasePath = stdout.trim()
-      const videoAnalyzerPath = path.join(userBasePath, 'bin', 'video-analyzer')
-      
-      if (fs.existsSync(videoAnalyzerPath)) {
-        console.log('Found video-analyzer at:', videoAnalyzerPath)
-        process.env.PATH = `${process.env.PATH}:${path.join(userBasePath, 'bin')}`
-        return true
-      }
-    } catch (siteError) {
-      console.warn('Error checking Python site packages:', siteError)
-    }
-    
-    return false
-  }
-}
-
-// Generate AI-based fallback analysis when video-analyzer isn't available
-async function generateFallbackAnalysis(videoInfo: any) {
-  try {
-    const { videoUrl, videoId, searchQuery, videoTitle, playCount, likeCount, commentCount, author } = videoInfo
-    
-    // Create a basic fallback analysis with available metadata
-    return {
-      transcript: "Video transcript unavailable - analysis performed using metadata only",
-      description: `This video appears to be related to "${searchQuery || 'your search topic'}". 
-The video title "${videoTitle || 'Unknown'}" suggests content focused on ${searchQuery || 'general topics'}. 
-It has received ${playCount || 'unknown'} views and ${likeCount || 'unknown'} likes, with ${commentCount || 'unknown'} comments.
-Created by ${author || 'unknown creator'}.
-To analyze this content more deeply, please view it directly on TikTok.`,
-      metadata: {
-        duration: "Unknown",
-        resolution: "Unknown",
-        title: videoTitle || "Unknown",
-        author: author || "Unknown",
-        engagement: {
-          views: playCount || 0,
-          likes: likeCount || 0,
-          comments: commentCount || 0
-        }
-      }
-    }
-  } catch (error) {
-    console.error('Error generating fallback analysis:', error)
-    return {
-      transcript: "Video analysis unavailable",
-      description: "Unable to analyze this video. Please view it directly on TikTok.",
-      metadata: { duration: "Unknown", resolution: "Unknown" }
-    }
-  }
-}
-
 export async function POST(request: Request) {
   try {
     // Extract video URL and info from the request
     const requestData = await request.json()
-    const { videoUrl, videoId, userId, searchQuery, videoTitle, playCount, likeCount, commentCount, author } = requestData
+    const { videoUrl, videoId, userId, searchQuery, videoTitle } = requestData
     
     if (!videoUrl) {
       return NextResponse.json({ error: 'Video URL is required' }, { status: 400 })
     }
 
     console.log(`Analyzing video: ${videoUrl}`)
-    
-    // Ensure we have a valid search query for database constraints
-    const safeSearchQuery = searchQuery || 'general content'
-    
-    // Check if video-analyzer is installed
-    const analyzerInstalled = await isVideoAnalyzerInstalled()
-    if (!analyzerInstalled) {
-      console.warn('video-analyzer not available - generating fallback analysis')
-      
-      // Generate fallback analysis
-      const fallbackAnalysis = await generateFallbackAnalysis(requestData)
-      
-      // Store the fallback analysis in Supabase if userId is provided
-      if (userId && videoId) {
-        const { error: dbError } = await supabase
-          .from('video_analysis')
-          .insert({
-            user_id: userId,
-            video_id: videoId,
-            search_query: safeSearchQuery,
-            analysis_result: fallbackAnalysis
-          })
-
-        if (dbError) {
-          console.error('Error storing fallback analysis:', dbError)
-        }
-      }
-      
-      return NextResponse.json({ 
-        success: true, 
-        analysis: fallbackAnalysis,
-        isPlaceholder: true,
-        search_query: safeSearchQuery
-      })
-    }
     
     // Create a unique output directory for each analysis
     const outputDir = path.join('/tmp', `video-analysis-${uuidv4()}`)
@@ -131,13 +33,19 @@ export async function POST(request: Request) {
       // Ensure output directory exists
       await execAsync(`mkdir -p ${outputDir}`)
       
+      // First check if video-analyzer is in PATH
+      const videoAnalyzerPath = await findVideoAnalyzerPath();
+      if (!videoAnalyzerPath) {
+        throw new Error('Video analyzer command not found in PATH')
+      }
+      
       // Run the video-analyzer command on the provided video URL
-      const cmd = `video-analyzer "${videoUrl}" --output-dir "${outputDir}"`
+      const cmd = `${videoAnalyzerPath} "${videoUrl}" --output-dir "${outputDir}"`
       console.log(`Executing command: ${cmd}`)
       
       const { stdout, stderr } = await execAsync(cmd)
       console.log('Analysis completed:', stdout)
-      if (stderr) console.error('Analysis stderr:', stderr)
+      if (stderr) console.log('Analysis stderr:', stderr)
       
       // Read the analysis results
       const analysisJsonPath = path.join(outputDir, 'analysis.json')
@@ -148,14 +56,14 @@ export async function POST(request: Request) {
       const analysisJson = fs.readFileSync(analysisJsonPath, 'utf8')
       const analysis = JSON.parse(analysisJson)
       
-      // If provided, store the video analysis
+      // Store the video analysis in Supabase
       if (userId && videoId) {
         const { error: dbError } = await supabase
           .from('video_analysis')
           .insert({
             user_id: userId,
             video_id: videoId,
-            search_query: safeSearchQuery,
+            search_query: searchQuery || 'general content',
             analysis_result: analysis
           })
 
@@ -173,14 +81,10 @@ export async function POST(request: Request) {
       
       return NextResponse.json({ 
         success: true, 
-        analysis,
-        search_query: safeSearchQuery
+        analysis
       })
-    } catch (analyzerError) {
-      console.error('Error running video analyzer:', analyzerError)
-      
-      // Generate fallback analysis if actual analysis fails
-      const fallbackAnalysis = await generateFallbackAnalysis(requestData)
+    } catch (error) {
+      console.error('Error running video analyzer:', error)
       
       // Clean up the temporary directory if it exists
       try {
@@ -191,29 +95,10 @@ export async function POST(request: Request) {
         console.error('Error cleaning up temp directory:', cleanupError)
       }
       
-      // Store the fallback analysis if userId is provided
-      if (userId && videoId) {
-        const { error: dbError } = await supabase
-          .from('video_analysis')
-          .insert({
-            user_id: userId,
-            video_id: videoId,
-            search_query: safeSearchQuery,
-            analysis_result: fallbackAnalysis
-          })
-
-        if (dbError) {
-          console.error('Error storing fallback analysis:', dbError)
-        }
-      }
-      
       return NextResponse.json({ 
-        success: true, 
-        analysis: fallbackAnalysis,
-        isPlaceholder: true,
-        search_query: safeSearchQuery,
-        originalError: `Failed to analyze video: ${analyzerError instanceof Error ? analyzerError.message : 'Unknown error'}`
-      })
+        success: false, 
+        error: error instanceof Error ? error.message : 'Unknown error analyzing video'
+      }, { status: 500 })
     }
   } catch (error) {
     console.error('Error in video analysis:', error)
@@ -224,5 +109,52 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     )
+  }
+}
+
+// Find video-analyzer in various possible locations
+async function findVideoAnalyzerPath() {
+  try {
+    // First try the standard PATH
+    try {
+      const { stdout } = await execAsync('which video-analyzer')
+      if (stdout.trim()) return stdout.trim()
+    } catch (e) {
+      console.log('video-analyzer not found in standard PATH')
+    }
+    
+    // Try Python user base location
+    try {
+      const { stdout: userBase } = await execAsync('python3 -m site --user-base')
+      const binPath = path.join(userBase.trim(), 'bin', 'video-analyzer')
+      
+      if (fs.existsSync(binPath)) {
+        console.log('Found video-analyzer at:', binPath)
+        return binPath
+      }
+    } catch (e) {
+      console.log('Could not determine Python user base path')
+    }
+    
+    // Try common Python paths in Vercel environment
+    const possiblePaths = [
+      '/var/task/.pythonbrew/scripts/video-analyzer',
+      '/opt/python/bin/video-analyzer',
+      '/var/lang/bin/video-analyzer',
+      './.vercel/cache/video-analyzer/bin/video-analyzer',
+      './node_modules/.bin/video-analyzer'
+    ]
+    
+    for (const testPath of possiblePaths) {
+      if (fs.existsSync(testPath)) {
+        console.log('Found video-analyzer at:', testPath)
+        return testPath
+      }
+    }
+    
+    return null
+  } catch (error) {
+    console.error('Error finding video-analyzer path:', error)
+    return null
   }
 } 

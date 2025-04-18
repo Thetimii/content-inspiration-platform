@@ -30,51 +30,119 @@ export default function Videos() {
     try {
       const baseUrl = getBaseUrl();
       
+      // Check if the video-analyzer setup endpoint is available (new function)
+      try {
+        const setupResponse = await fetch(`${baseUrl}/api/setup-python`, { method: 'POST' });
+        if (setupResponse.ok) {
+          console.log('Python environment is ready');
+        } else {
+          console.warn('Python setup may not be available:', await setupResponse.text());
+        }
+      } catch (setupError) {
+        console.warn('Failed to check Python setup:', setupError);
+      }
+      
       // Log the URL we're calling for debugging
       console.log(`Calling analyze API at: ${baseUrl}/api/analyze`);
       
-      const response = await fetch(`${baseUrl}/api/analyze`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          videoUrl,
-          videoId,
-          userId,
-          searchQuery
-        }),
-      })
-
-      if (!response.ok) {
-        const errorMessage = await response.text().catch(() => 'No error details available');
-        console.error(`Analysis server error: ${response.status} - ${errorMessage}`);
-        
-        // Return simplified analysis for now so the UI can continue
-        return {
-          title: video.title,
-          analysis: `Video could not be analyzed (Status: ${response.status}).\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.\n\nFor best results, watch the video directly to understand its content.`
-        };
-      }
-
-      const data = await response.json();
-      if (!data.success) {
-        console.error(`Analysis API returned error: ${data.error || 'Unknown error'}`);
-        return {
-          title: video.title,
-          analysis: `Video analysis failed: ${data.error || 'Unknown error'}.\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.`
-        };
-      }
-
-      // Return the successful result
-      return data.result;
-    } catch (error) {
-      console.error('Error analyzing video:', error);
+      // First, try the Next.js API route with 2 retries
+      let attempts = 0;
+      const maxAttempts = 3;
+      let waitTime = 1000; // Start with 1 second
       
-      // Return simplified analysis so the UI can continue
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          const response = await fetch(`${baseUrl}/api/analyze`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              videoUrl,
+              videoId,
+              userId,
+              searchQuery,
+              videoTitle: video.title,
+              playCount: video.stats.play_count,
+              likeCount: video.stats.like_count,
+              commentCount: video.stats.comment_count,
+              author: video.author
+            }),
+          });
+
+          // Check if we got a successful response
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success) {
+              // Return the analysis with additional metadata
+              return {
+                title: video.title,
+                search_query: searchQuery,
+                analysis_result: data.analysis,
+                videoId: videoId,
+                url: videoUrl
+              };
+            } else {
+              console.error(`Analysis returned error: ${data.error || 'Unknown error'}`);
+              // Wait before retry
+              if (attempts < maxAttempts) {
+                console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                waitTime *= 2; // Exponential backoff
+                continue;
+              }
+            }
+          } else {
+            const errorText = await response.text();
+            console.error(`Analysis request failed (${response.status}): ${errorText}`);
+            
+            // Wait before retry
+            if (attempts < maxAttempts) {
+              console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              waitTime *= 2; // Exponential backoff
+              continue;
+            }
+          }
+        } catch (fetchError) {
+          console.error('Error fetching analysis:', fetchError);
+          // Wait before retry
+          if (attempts < maxAttempts) {
+            console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            waitTime *= 2; // Exponential backoff
+            continue;
+          }
+        }
+      }
+      
+      // If we get here, all attempts failed - create a basic analysis
+      console.warn('All analysis attempts failed - returning basic video information');
       return {
         title: video.title,
-        analysis: `Error during video analysis: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.`
+        search_query: searchQuery,
+        analysis_result: {
+          description: `This video by ${video.author} has ${video.stats.play_count} views and ${video.stats.like_count} likes.`,
+          transcript: "Transcript unavailable - please view the video directly."
+        },
+        videoId: videoId,
+        url: videoUrl
+      };
+      
+    } catch (error) {
+      console.error(`Error during video analysis:`, error);
+      // Return a basic analysis object to prevent UI errors
+      return {
+        title: video.title,
+        search_query: searchQuery,
+        videoId: videoId,
+        url: videoUrl,
+        analysis_result: {
+          description: "Video could not be analyzed. Please view it directly to understand its content.",
+          transcript: "Transcript unavailable."
+        }
       };
     }
   }
