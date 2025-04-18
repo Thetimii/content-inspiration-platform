@@ -30,22 +30,10 @@ export default function Videos() {
     try {
       const baseUrl = getBaseUrl();
       
-      // Check if the video-analyzer setup endpoint is available (new function)
-      try {
-        const setupResponse = await fetch(`${baseUrl}/api/setup-python`, { method: 'POST' });
-        if (setupResponse.ok) {
-          console.log('Python environment is ready');
-        } else {
-          console.warn('Python setup may not be available:', await setupResponse.text());
-        }
-      } catch (setupError) {
-        console.warn('Failed to check Python setup:', setupError);
-      }
-      
       // Log the URL we're calling for debugging
-      console.log(`Calling analyze API at: ${baseUrl}/api/analyze`);
+      console.log(`Calling integrated analyzer at: ${baseUrl}/api/integrated-analyzer`);
       
-      // First, try the Next.js API route with 2 retries
+      // First, try the integrated analyzer with 2 retries
       let attempts = 0;
       const maxAttempts = 3;
       let waitTime = 1000; // Start with 1 second
@@ -53,7 +41,7 @@ export default function Videos() {
       while (attempts < maxAttempts) {
         attempts++;
         try {
-          const response = await fetch(`${baseUrl}/api/analyze`, {
+          const response = await fetch(`${baseUrl}/api/integrated-analyzer`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -259,7 +247,7 @@ export default function Videos() {
         setProgress('Analyzing patterns across videos...')
         try {
           const baseUrl = getBaseUrl();
-          const patternResponse = await fetch(`${baseUrl}/api/analyze-patterns`, {
+          const patternResponse = await fetch(`${baseUrl}/api/integrated-patterns`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
