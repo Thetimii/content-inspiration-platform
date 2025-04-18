@@ -5,6 +5,18 @@ import { supabase } from '@/lib/supabase'
 import { searchTikTokVideos } from '@/lib/tiktok'
 import { BusinessContext, TikTokVideo } from '@/types/analysis'
 
+// Get the base URL based on environment
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return window.location.origin;
+  }
+  // Server-side
+  return process.env.VERCEL_URL ? 
+    `https://${process.env.VERCEL_URL}` : 
+    'http://localhost:3000';
+};
+
 export default function Videos() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -14,34 +26,112 @@ export default function Videos() {
   const [videosPerHashtag, setVideosPerHashtag] = useState(2)
   const [allAnalyses, setAllAnalyses] = useState<any[]>([])
 
-  const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string) => {
+  const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string, video: TikTokVideo) => {
     try {
-      const response = await fetch('/api/analyze', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      const baseUrl = getBaseUrl();
+      
+      // Log the URL we're calling for debugging
+      console.log(`Calling integrated analyzer at: ${baseUrl}/api/integrated-analyzer`);
+      
+      // First, try the integrated analyzer with 2 retries
+      let attempts = 0;
+      const maxAttempts = 3;
+      let waitTime = 1000; // Start with 1 second
+      
+      while (attempts < maxAttempts) {
+        attempts++;
+        try {
+          const response = await fetch(`${baseUrl}/api/integrated-analyzer`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              videoUrl,
+              videoId,
+              userId,
+              searchQuery,
+              videoTitle: video.title,
+              playCount: video.stats.play_count,
+              likeCount: video.stats.like_count,
+              commentCount: video.stats.comment_count,
+              author: video.author
+            }),
+          });
+
+          // Check if we got a successful response
+          if (response.ok) {
+            const data = await response.json();
+            
+            if (data.success) {
+              // Return the analysis with additional metadata
+              return {
+                title: video.title,
+                search_query: searchQuery,
+                analysis_result: data.analysis,
+                videoId: videoId,
+                url: videoUrl
+              };
+            } else {
+              console.error(`Analysis returned error: ${data.error || 'Unknown error'}`);
+              // Wait before retry
+              if (attempts < maxAttempts) {
+                console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+                await new Promise(resolve => setTimeout(resolve, waitTime));
+                waitTime *= 2; // Exponential backoff
+                continue;
+              }
+            }
+          } else {
+            const errorText = await response.text();
+            console.error(`Analysis request failed (${response.status}): ${errorText}`);
+            
+            // Wait before retry
+            if (attempts < maxAttempts) {
+              console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+              await new Promise(resolve => setTimeout(resolve, waitTime));
+              waitTime *= 2; // Exponential backoff
+              continue;
+            }
+          }
+        } catch (fetchError) {
+          console.error('Error fetching analysis:', fetchError);
+          // Wait before retry
+          if (attempts < maxAttempts) {
+            console.log(`Retrying analysis (attempt ${attempts+1}/${maxAttempts})...`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            waitTime *= 2; // Exponential backoff
+            continue;
+          }
+        }
+      }
+      
+      // If we get here, all attempts failed - create a basic analysis
+      console.warn('All analysis attempts failed - returning basic video information');
+      return {
+        title: video.title,
+        search_query: searchQuery,
+        analysis_result: {
+          description: `This video by ${video.author} has ${video.stats.play_count} views and ${video.stats.like_count} likes.`,
+          transcript: "Transcript unavailable - please view the video directly."
         },
-        body: JSON.stringify({ 
-          videoUrl,
-          videoId,
-          userId,
-          searchQuery
-        }),
-      })
-
-      if (!response.ok) {
-        throw new Error(`Analysis failed: ${response.statusText}`)
-      }
-
-      const data = await response.json()
-      if (!data.success) {
-        throw new Error(data.error)
-      }
-
-      return data.result
+        videoId: videoId,
+        url: videoUrl
+      };
+      
     } catch (error) {
-      console.error('Error analyzing video:', error)
-      throw error
+      console.error(`Error during video analysis:`, error);
+      // Return a basic analysis object to prevent UI errors
+      return {
+        title: video.title,
+        search_query: searchQuery,
+        videoId: videoId,
+        url: videoUrl,
+        analysis_result: {
+          description: "Video could not be analyzed. Please view it directly to understand its content.",
+          transcript: "Transcript unavailable."
+        }
+      };
     }
   }
 
@@ -140,7 +230,8 @@ export default function Videos() {
               video.download_url, 
               video.video_id,
               session.user.id,
-              hashtag
+              hashtag,
+              video
             )
             analysisResults.push(analysisResult)
 
@@ -155,7 +246,8 @@ export default function Videos() {
       if (analysisResults.length > 0) {
         setProgress('Analyzing patterns across videos...')
         try {
-          const patternResponse = await fetch('/api/analyze-patterns', {
+          const baseUrl = getBaseUrl();
+          const patternResponse = await fetch(`${baseUrl}/api/integrated-patterns`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
