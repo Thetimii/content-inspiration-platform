@@ -80,9 +80,9 @@ module.exports = async (req, res) => {
     const audioPath = path.join(workDir, 'audio.mp3');
     await extractAudio(videoPath, audioPath);
     
-    console.log('Audio extracted, transcribing...');
+    console.log('Audio extracted, transcribing with Whisper API...');
     
-    // Transcribe audio
+    // Transcribe audio using only Whisper
     let transcript = '';
     try {
       transcript = await transcribeAudio(audioPath);
@@ -92,7 +92,7 @@ module.exports = async (req, res) => {
       transcript = 'Audio transcription unavailable';
     }
     
-    console.log('Extracting frames for visual analysis...');
+    console.log('Extracting frames for analysis using model meta-llama/Llama-Vision-Free...');
     
     // Extract frames
     let framesPaths = [];
@@ -113,26 +113,27 @@ module.exports = async (req, res) => {
     
     console.log('Analyzing frames...');
     
-    // Analyze frames
+    // Analyze frames using Llama-Vision-Free via openrouter
     let frameDescriptions = [];
     if (framesPaths.length > 0) {
       try {
         const analyses = await Promise.all(
-          framesPaths.map(framePath => analyzeFrame(framePath, searchQuery))
+          framesPaths.map(framePath => analyzeFrameWithLlama(framePath, searchQuery))
         );
         frameDescriptions = analyses.filter(Boolean);
+        console.log('Frame analysis completed');
       } catch (visionError) {
         console.error('Error analyzing frames:', visionError);
       }
     }
     
-    console.log('Generating video description...');
+    console.log('Reconstructing video description...');
     
     // Generate description
     let description = '';
     try {
-      description = await generateDescription(transcript, frameDescriptions, searchQuery);
-      console.log('Description generated successfully');
+      description = await generateDescriptionWithLlama(transcript, frameDescriptions, searchQuery);
+      console.log('Successfully reconstructed video description');
     } catch (descError) {
       console.error('Error generating description:', descError);
       // Create a simple description as fallback
@@ -181,6 +182,18 @@ module.exports = async (req, res) => {
       } catch (dbError) {
         console.error('Error storing in database:', dbError);
       }
+    }
+    
+    // Save output to a file (similar to the original analyzer)
+    try {
+      const outputDir = path.join(process.cwd(), 'output');
+      if (!fs.existsSync(outputDir)) {
+        fs.mkdirSync(outputDir, { recursive: true });
+      }
+      fs.writeFileSync(path.join(outputDir, 'analysis.json'), JSON.stringify(analysis, null, 2));
+      console.log('Analysis complete. Results saved to output/analysis.json');
+    } catch (saveError) {
+      console.error('Error saving analysis file:', saveError);
     }
     
     // Clean up
@@ -255,7 +268,7 @@ async function extractAudio(videoPath, audioPath) {
 }
 
 async function transcribeAudio(audioPath) {
-  // Try OpenAI Whisper API for transcription
+  // Use only OpenAI Whisper API for transcription
   try {
     const audioData = fs.createReadStream(audioPath);
     const transcription = await openai.audio.transcriptions.create({
@@ -267,28 +280,7 @@ async function transcribeAudio(audioPath) {
     return transcription.text;
   } catch (whisperError) {
     console.error('OpenAI transcription error:', whisperError);
-    
-    // Fallback to AssemblyAI if OpenAI fails
-    if (process.env.ASSEMBLYAI_API_KEY) {
-      try {
-        const assemblyai = require('assemblyai');
-        const client = new assemblyai.AssemblyAI({
-          apiKey: process.env.ASSEMBLYAI_API_KEY
-        });
-        
-        const audioData = fs.readFileSync(audioPath);
-        const response = await client.transcripts.transcribe({
-          audio: audioData,
-          language_code: 'en'
-        });
-        
-        return response.text;
-      } catch (assemblyError) {
-        throw new Error(`Transcription failed: ${assemblyError.message}`);
-      }
-    }
-    
-    throw new Error(`OpenAI transcription failed: ${whisperError.message}`);
+    throw new Error(`Transcription failed: ${whisperError.message}`);
   }
 }
 
@@ -330,91 +322,164 @@ async function createThumbnail(videoPath, thumbnailPath) {
   });
 }
 
-async function analyzeFrame(framePath, searchQuery) {
-  // Use OpenAI Vision API to analyze frame
+// Analyze frame using Llama-Vision-Free via openrouter
+async function analyzeFrameWithLlama(framePath, searchQuery) {
+  // Use Llama-Vision-Free via OpenRouter
   try {
     const imageData = await fs.promises.readFile(framePath, { encoding: 'base64' });
     
-    const response = await openai.chat.completions.create({
-      model: 'gpt-4-vision-preview',
-      messages: [
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'text',
-              text: `Analyze this frame from a video about "${searchQuery || 'general topics'}". 
-                     Describe what you see in detail, including:
-                     - People and their appearance
-                     - Setting and background
-                     - Objects and their arrangement
-                     - Camera angle and framing
-                     - Lighting conditions
-                     - Overall mood/tone`
-            },
-            {
-              type: 'image_url',
-              image_url: {
-                url: `data:image/jpeg;base64,${imageData}`
-              }
-            }
-          ]
-        }
-      ],
-      max_tokens: 500
-    });
+    // Configure the request with max retries
+    const maxRetries = 3;
+    let attempt = 0;
+    let lastError = null;
     
-    return response.choices[0].message.content;
-  } catch (visionError) {
-    console.error('Vision API error:', visionError);
+    while (attempt < maxRetries) {
+      attempt++;
+      
+      try {
+        const response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: 'meta-llama/Llama-Vision-Free',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: `Analyze this frame from a video about "${searchQuery || 'general topics'}". 
+                           Describe what you see in detail, including:
+                           - People and their appearance
+                           - Setting and background
+                           - Objects and their arrangement
+                           - Camera angle and framing
+                           - Lighting conditions
+                           - Overall mood/tone`
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: `data:image/jpeg;base64,${imageData}`
+                    }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 500
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        return response.data.choices[0].message.content;
+      } catch (error) {
+        console.error(`Request failed (attempt ${attempt}/${maxRetries}):`, error.message);
+        lastError = error;
+        
+        // Check for retry-after header
+        if (error.response && error.response.headers['retry-after']) {
+          const retryAfter = parseInt(error.response.headers['retry-after'], 10) || 7;
+          console.log(`Using Retry-After header value: ${retryAfter} seconds`);
+          console.warn(`Waiting ${retryAfter} seconds before retry`);
+          await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        } else {
+          // Default backoff
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+      }
+    }
+    
+    throw lastError || new Error('Max retries exceeded');
+  } catch (error) {
+    console.error('Frame analysis error:', error);
     return null;
   }
 }
 
-async function generateDescription(transcript, frameDescriptions, searchQuery) {
-  // Prepare input for the description generation
+// Generate description using Llama via openrouter
+async function generateDescriptionWithLlama(transcript, frameDescriptions, searchQuery) {
+  // Use Llama via OpenRouter to generate video description
   const frameText = frameDescriptions.length > 0 
     ? frameDescriptions.join('\n\n') 
     : 'No visual analysis available';
   
-  // Use OpenAI to generate video description
-  const response = await openai.chat.completions.create({
-    model: 'gpt-4',
-    messages: [
-      {
-        role: 'system',
-        content: 'You are a professional video content analyst specialized in creating detailed descriptions of videos based on transcripts and visual elements.'
-      },
-      {
-        role: 'user',
-        content: `
-        Create a detailed video description based on the following information:
-        
-        SEARCH TOPIC: ${searchQuery || 'General topic'}
-        
-        TRANSCRIPT:
-        ${transcript || 'No transcript available'}
-        
-        VISUAL ANALYSIS:
-        ${frameText}
-        
-        Format your response as "VIDEO SUMMARY" followed by a detailed description that covers:
-        1. Duration (if known)
-        2. What happens in the video
-        3. Visual elements and equipment used
-        4. Target audience
-        5. Key tips for creating engaging videos in this style
-        
-        DO NOT include phrases like "Based on the transcript" or "According to the visual analysis" in your description.
-        Write as if you've watched the entire video.
-        `
-      }
-    ],
-    temperature: 0.7,
-    max_tokens: 1000
-  });
+  // Configure the request with max retries
+  const maxRetries = 3;
+  let attempt = 0;
+  let lastError = null;
   
-  return response.choices[0].message.content;
+  while (attempt < maxRetries) {
+    attempt++;
+    
+    try {
+      const response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: 'meta-llama/Llama-3-70b-instruct', // Using Llama-3-70b
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a professional video content analyst specialized in creating detailed descriptions of videos based on transcripts and visual elements.'
+            },
+            {
+              role: 'user',
+              content: `
+              Create a detailed video description based on the following information:
+              
+              SEARCH TOPIC: ${searchQuery || 'General topic'}
+              
+              TRANSCRIPT:
+              ${transcript || 'No transcript available'}
+              
+              VISUAL ANALYSIS:
+              ${frameText}
+              
+              Format your response as "VIDEO SUMMARY" followed by a detailed description that covers:
+              1. Duration (if known)
+              2. What happens in the video
+              3. Visual elements and equipment used
+              4. Target audience
+              5. Key tips for creating engaging videos in this style
+              
+              DO NOT include phrases like "Based on the transcript" or "According to the visual analysis" in your description.
+              Write as if you've watched the entire video.
+              `
+            }
+          ],
+          temperature: 0.7,
+          max_tokens: 1000
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      return response.data.choices[0].message.content;
+    } catch (error) {
+      console.error(`Request failed (attempt ${attempt}/${maxRetries}):`, error.message);
+      lastError = error;
+      
+      // Check for retry-after header
+      if (error.response && error.response.headers['retry-after']) {
+        const retryAfter = parseInt(error.response.headers['retry-after'], 10) || 7;
+        console.log(`Using Retry-After header value: ${retryAfter} seconds`);
+        console.warn(`Waiting ${retryAfter} seconds before retry`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+      } else {
+        // Default backoff
+        await new Promise(resolve => setTimeout(resolve, 5000));
+      }
+    }
+  }
+  
+  throw lastError || new Error('Max retries exceeded');
 }
 
 async function getVideoDuration(videoPath) {
