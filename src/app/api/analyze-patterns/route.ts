@@ -13,6 +13,40 @@ interface VideoAnalysis {
   [key: string]: any;
 }
 
+// The prompt for generating video pattern analysis
+const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
+
+{{VIDEO_ANALYSES}}
+
+Based on these analyses, provide a comprehensive breakdown in the following format:
+
+1. CONTENT OVERVIEW
+- Key visual elements and compositions used
+- Content structure and narrative flow
+- Engagement techniques identified
+- Target audience characteristics
+- Emotional triggers and hooks
+
+2. TECHNICAL REQUIREMENTS
+- Camera setup and movements
+- Lighting setup and techniques
+- Essential equipment list with alternatives
+- Software and editing tools needed
+
+3. RECREATION GUIDE
+- Pre-production planning steps
+- Camera angle and lighting recommendations
+- Performance/presentation tips
+- Editing workflow and effects
+
+4. OPTIMIZATION TIPS
+- Ideal posting strategy
+- Hashtag recommendations
+- Title and description format
+- Engagement strategies
+
+Focus on actionable, specific recommendations that can be immediately implemented. Keep your analysis concise and practical.`;
+
 // Function to generate a fallback pattern analysis when AI fails
 const generateFallbackPatternAnalysis = (videoAnalyses: VideoAnalysis[]) => {
   // Extract common elements from the videos
@@ -65,41 +99,13 @@ export async function POST(request: Request) {
 
     let patternAnalysis = "";
     
-    // Simplified prompt for video analyses
-    const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
-
-${videoAnalyses.map((analysis, index) => `
-VIDEO ANALYSIS ${index + 1}:
-${JSON.stringify(analysis, null, 2)}`).join('\n')}
-
-Based on these analyses, provide a comprehensive breakdown in the following format:
-
-1. CONTENT OVERVIEW
-- Key visual elements and compositions used
-- Content structure and narrative flow
-- Engagement techniques identified
-- Target audience characteristics
-- Emotional triggers and hooks
-
-2. TECHNICAL REQUIREMENTS
-- Camera setup and movements
-- Lighting setup and techniques
-- Essential equipment list with alternatives
-- Software and editing tools needed
-
-3. RECREATION GUIDE
-- Pre-production planning steps
-- Camera angle and lighting recommendations
-- Performance/presentation tips
-- Editing workflow and effects
-
-4. OPTIMIZATION TIPS
-- Ideal posting strategy
-- Hashtag recommendations
-- Title and description format
-- Engagement strategies
-
-Focus on actionable, specific recommendations that can be immediately implemented. Keep your analysis concise and practical.`;
+    // Prepare the analyses for the prompt
+    const videoAnalysesText = videoAnalyses.map((analysis, index) => 
+      `VIDEO ANALYSIS ${index + 1}:\n${JSON.stringify(analysis, null, 2)}`
+    ).join('\n\n');
+    
+    // Insert the analyses into the prompt
+    const fullPrompt = prompt.replace('{{VIDEO_ANALYSES}}', videoAnalysesText);
     
     if (!process.env.TOGETHER_API_KEY) {
       console.warn('Together API key is not configured, using fallback pattern generation');
@@ -122,7 +128,7 @@ Focus on actionable, specific recommendations that can be immediately implemente
               },
               {
                 role: 'user',
-                content: prompt
+                content: fullPrompt
               }
             ],
             temperature: 0.7,
@@ -164,20 +170,25 @@ Focus on actionable, specific recommendations that can be immediately implemente
     }
     
     // Store the analysis in Supabase
-    const { error: dbError } = await supabase
-      .from('pattern_analyses')
-      .insert({
-        user_id: userId,
-        num_videos_analyzed: videoAnalyses.length,
-        video_analyses: videoAnalyses,
-        pattern_analysis: patternAnalysis,
-        search_queries: videoAnalyses.map(v => v.search_query || 'unknown').filter(Boolean),
-        status: 'completed',
-        created_at: new Date().toISOString()
-      })
+    try {
+      const { error: dbError } = await supabase
+        .from('pattern_analyses')
+        .insert({
+          user_id: userId,
+          num_videos_analyzed: videoAnalyses.length,
+          video_analyses: videoAnalyses,
+          pattern_analysis: patternAnalysis,
+          search_queries: videoAnalyses.map(v => v.search_query || 'unknown').filter(Boolean),
+          status: 'completed',
+          created_at: new Date().toISOString()
+        })
 
-    if (dbError) {
-      console.error('Error storing analysis:', dbError)
+      if (dbError) {
+        console.error('Error storing analysis:', dbError)
+      }
+    } catch (dbError) {
+      console.error('Database error when saving pattern analysis:', dbError);
+      // Continue to return the analysis even if DB save fails
     }
 
     return NextResponse.json({ 
