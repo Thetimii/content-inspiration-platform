@@ -31,7 +31,7 @@ export default function Videos() {
       const baseUrl = getBaseUrl();
       
       // Log the URL we're calling for debugging
-      console.log(`Calling integrated analyzer at: ${baseUrl}/api/integrated-analyzer`);
+      console.log(`Calling analyzer at: ${baseUrl}/api/analyze`);
       
       // First, try the integrated analyzer with 2 retries
       let attempts = 0;
@@ -41,7 +41,7 @@ export default function Videos() {
       while (attempts < maxAttempts) {
         attempts++;
         try {
-          const response = await fetch(`${baseUrl}/api/integrated-analyzer`, {
+          const response = await fetch(`${baseUrl}/api/analyze`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -247,7 +247,7 @@ export default function Videos() {
         setProgress('Analyzing patterns across videos...')
         try {
           const baseUrl = getBaseUrl();
-          const patternResponse = await fetch(`${baseUrl}/api/integrated-patterns`, {
+          const patternResponse = await fetch(`${baseUrl}/api/analyze-patterns`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
