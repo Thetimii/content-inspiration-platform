@@ -51,7 +51,7 @@ async function generateFallbackAnalysis(videoInfo: any) {
     return {
       transcript: "Video transcript unavailable - analysis performed using metadata only",
       description: `This video appears to be related to "${searchQuery || 'your search topic'}". 
-The video title "${videoTitle || 'Unknown'}" suggests content focused on ${searchQuery}. 
+The video title "${videoTitle || 'Unknown'}" suggests content focused on ${searchQuery || 'general topics'}. 
 It has received ${playCount || 'unknown'} views and ${likeCount || 'unknown'} likes, with ${commentCount || 'unknown'} comments.
 Created by ${author || 'unknown creator'}.
 To analyze this content more deeply, please view it directly on TikTok.`,
@@ -89,6 +89,9 @@ export async function POST(request: Request) {
 
     console.log(`Analyzing video: ${videoUrl}`)
     
+    // Ensure we have a valid search query for database constraints
+    const safeSearchQuery = searchQuery || 'general content'
+    
     // Check if video-analyzer is installed
     const analyzerInstalled = await isVideoAnalyzerInstalled()
     if (!analyzerInstalled) {
@@ -104,6 +107,7 @@ export async function POST(request: Request) {
           .insert({
             user_id: userId,
             video_id: videoId,
+            search_query: safeSearchQuery,
             analysis_result: fallbackAnalysis
           })
 
@@ -115,7 +119,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ 
         success: true, 
         analysis: fallbackAnalysis,
-        isPlaceholder: true
+        isPlaceholder: true,
+        search_query: safeSearchQuery
       })
     }
     
@@ -150,6 +155,7 @@ export async function POST(request: Request) {
           .insert({
             user_id: userId,
             video_id: videoId,
+            search_query: safeSearchQuery,
             analysis_result: analysis
           })
 
@@ -167,7 +173,8 @@ export async function POST(request: Request) {
       
       return NextResponse.json({ 
         success: true, 
-        analysis 
+        analysis,
+        search_query: safeSearchQuery
       })
     } catch (analyzerError) {
       console.error('Error running video analyzer:', analyzerError)
@@ -191,6 +198,7 @@ export async function POST(request: Request) {
           .insert({
             user_id: userId,
             video_id: videoId,
+            search_query: safeSearchQuery,
             analysis_result: fallbackAnalysis
           })
 
@@ -203,6 +211,7 @@ export async function POST(request: Request) {
         success: true, 
         analysis: fallbackAnalysis,
         isPlaceholder: true,
+        search_query: safeSearchQuery,
         originalError: `Failed to analyze video: ${analyzerError instanceof Error ? analyzerError.message : 'Unknown error'}`
       })
     }

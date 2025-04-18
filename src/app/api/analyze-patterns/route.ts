@@ -9,6 +9,7 @@ const supabase = createClient(
 
 // Ensure we have the type for video analyses
 interface VideoAnalysis {
+  title?: string;
   search_query?: string;
   [key: string]: any;
 }
@@ -23,10 +24,30 @@ export async function POST(request: Request) {
 
     console.log(`Analyzing patterns for ${videoAnalyses.length} video(s)`)
 
+    // Sanitize videoAnalyses to ensure all have necessary properties
+    const sanitizedAnalyses = videoAnalyses.map((analysis, index) => {
+      // Handle null or undefined analysis
+      if (!analysis) {
+        return {
+          title: `Video ${index + 1}`,
+          description: "No analysis available",
+          search_query: "general content",
+          id: `fallback-${index}`
+        };
+      }
+      
+      // Ensure all required properties exist
+      return {
+        ...analysis,
+        title: analysis.title || `Video ${index + 1}`,
+        search_query: analysis.search_query || "general content"
+      };
+    });
+
     // Simplified prompt for video analyses
     const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
 
-${videoAnalyses.map((analysis, index) => `
+${sanitizedAnalyses.map((analysis, index) => `
 VIDEO ANALYSIS ${index + 1}:
 ${JSON.stringify(analysis, null, 2)}`).join('\n')}
 
@@ -130,9 +151,11 @@ Focus on actionable, specific recommendations that can be immediately implemente
     
     // If we still don't have a pattern analysis, create a basic one from video titles
     if (!patternAnalysis) {
-      // Extract important information from videos
-      const videoTitles = videoAnalyses.map(v => v.title || 'Untitled video').slice(0, 3);
-      const numVideos = videoAnalyses.length;
+      // Extract important information from videos - with safety checks
+      const videoTitles = sanitizedAnalyses
+        .map(v => (v && v.title) ? v.title : 'Untitled video')
+        .slice(0, 3);
+      const numVideos = sanitizedAnalyses.length;
       
       patternAnalysis = `
 CONTENT OVERVIEW
@@ -149,18 +172,25 @@ Post regularly and engage with your audience through comments and shares.
 `;
     }
 
+    // Extract search queries with safety check
+    const searchQueries = sanitizedAnalyses
+      .map(v => (v && v.search_query) ? v.search_query : 'general content')
+      .filter(Boolean);
+    
+    // Ensure we have at least one search query
+    if (searchQueries.length === 0) {
+      searchQueries.push('general content');
+    }
+
     // Store the analysis in Supabase
     const { error: dbError } = await supabase
       .from('pattern_analyses')
       .insert({
         user_id: userId,
-        num_videos_analyzed: videoAnalyses.length,
-        video_analyses: videoAnalyses,
+        num_videos_analyzed: sanitizedAnalyses.length,
+        video_analyses: sanitizedAnalyses,
         pattern_analysis: patternAnalysis,
-        search_queries: videoAnalyses
-          .filter(v => v.search_query)
-          .map(v => v.search_query || 'unknown')
-          .filter(Boolean),
+        search_queries: searchQueries,
         status: 'completed',
         created_at: new Date().toISOString()
       })
@@ -177,7 +207,7 @@ Post regularly and engage with your audience through comments and shares.
       success: true, 
       result: {
         pattern_analysis: patternAnalysis,
-        analyzed_videos: videoAnalyses.length
+        analyzed_videos: sanitizedAnalyses.length
       }
     })
   } catch (error) {
