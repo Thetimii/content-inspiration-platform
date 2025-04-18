@@ -13,10 +13,22 @@ interface VideoAnalysis {
   [key: string]: any;
 }
 
-// The prompt for generating video pattern analysis
-const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
+export async function POST(request: Request) {
+  try {
+    const { videoAnalyses, userId } = await request.json()
 
-{{VIDEO_ANALYSES}}
+    if (!Array.isArray(videoAnalyses) || videoAnalyses.length === 0) {
+      throw new Error('Please provide at least one video analysis')
+    }
+
+    console.log(`Analyzing patterns for ${videoAnalyses.length} video(s)`)
+
+    // Simplified prompt for video analyses
+    const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
+
+${videoAnalyses.map((analysis, index) => `
+VIDEO ANALYSIS ${index + 1}:
+${JSON.stringify(analysis, null, 2)}`).join('\n')}
 
 Based on these analyses, provide a comprehensive breakdown in the following format:
 
@@ -46,81 +58,27 @@ Based on these analyses, provide a comprehensive breakdown in the following form
 - Engagement strategies
 
 Focus on actionable, specific recommendations that can be immediately implemented. Keep your analysis concise and practical.`;
-
-// Function to generate a fallback pattern analysis when AI fails
-const generateFallbackPatternAnalysis = (videoAnalyses: VideoAnalysis[]) => {
-  // Extract common elements from the videos
-  const numVideos = videoAnalyses.length;
-  const searchQueries = videoAnalyses
-    .filter(v => v.search_query)
-    .map(v => v.search_query || 'unknown');
-  const uniqueQueries = Array.from(new Set<string>(searchQueries));
-  
-  return `
-CONTENT OVERVIEW
-- Analysis based on ${numVideos} videos from searches: ${uniqueQueries.join(', ')}
-- Common themes include educational content, tutorials, and demonstrations
-- Content is primarily instructional with a focus on sharing expertise
-- Videos typically have clear introductions and conclusions
-- Most videos include calls to action to engage with the content
-
-TECHNICAL REQUIREMENTS
-- Clear, well-lit recording environment
-- Stable camera setup, preferably on a tripod
-- Good quality audio recording
-- Simple, uncluttered backgrounds
-- Natural lighting or softbox lighting for even illumination
-
-RECREATION GUIDE
-- Plan your content with a clear beginning, middle, and end
-- Start with a hook to grab attention in the first few seconds
-- Present your main points clearly and concisely
-- Use simple language and avoid technical jargon
-- End with a clear call to action
-
-OPTIMIZATION TIPS
-- Post consistently to build audience
-- Use relevant hashtags based on your content and industry
-- Respond to comments to build engagement
-- Analyze your best-performing content and create more similar material
-- Cross-promote your content on other platforms
-`;
-}
-
-export async function POST(request: Request) {
-  try {
-    const { videoAnalyses, userId } = await request.json()
-
-    if (!Array.isArray(videoAnalyses) || videoAnalyses.length === 0) {
-      throw new Error('Please provide at least one video analysis')
-    }
-
-    console.log(`Analyzing patterns for ${videoAnalyses.length} video(s)`)
-
+    
+    // Try up to 3 times with exponential backoff
     let patternAnalysis = "";
+    let attempts = 0;
+    const maxAttempts = 3;
+    let waitTime = 1000; // Start with 1 second
     
-    // Prepare the analyses for the prompt
-    const videoAnalysesText = videoAnalyses.map((analysis, index) => 
-      `VIDEO ANALYSIS ${index + 1}:\n${JSON.stringify(analysis, null, 2)}`
-    ).join('\n\n');
-    
-    // Insert the analyses into the prompt
-    const fullPrompt = prompt.replace('{{VIDEO_ANALYSES}}', videoAnalysesText);
-    
-    if (!process.env.TOGETHER_API_KEY) {
-      console.warn('Together API key is not configured, using fallback pattern generation');
-      patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-    } else {
+    while (attempts < maxAttempts) {
+      attempts++;
       try {
+        console.log(`Pattern analysis attempt ${attempts}/${maxAttempts}`);
+        
         // Send to Together AI for analysis
         const response = await fetch('https://api.together.xyz/v1/chat/completions', {
           method: 'POST',
           headers: {
-            'Authorization': `Bearer ${process.env.TOGETHER_API_KEY}`,
+            'Authorization': `Bearer ${process.env.TOGETHER_API_KEY!}`,
             'Content-Type': 'application/json'
           },
           body: JSON.stringify({
-            model: 'meta-llama/Llama-3.3-70B-Instruct-Turbo-Free',
+            model: 'meta-llama/Llama-3.1-8B-Instruct',  // Using a smaller model that has less rate limiting
             messages: [
               {
                 role: 'system',
@@ -128,68 +86,91 @@ export async function POST(request: Request) {
               },
               {
                 role: 'user',
-                content: fullPrompt
+                content: prompt
               }
             ],
             temperature: 0.7,
-            max_tokens: 2000,
-            top_p: 0.9,
-            frequency_penalty: 0.3,
-            presence_penalty: 0.3
+            max_tokens: 1500,
+            top_p: 0.9
           })
-        })
+        });
 
-        if (!response.ok) {
-          const errorText = await response.text();
-          console.error(`Together AI API error: ${response.status}`, errorText);
-          
-          // Use fallback when API fails
-          patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
-        } else {
+        if (response.ok) {
           const result = await response.json();
           if (result.choices && result.choices[0] && result.choices[0].message) {
             patternAnalysis = result.choices[0].message.content;
+            break; // Success! Exit the loop
           } else {
             console.error('Unexpected API response format:', JSON.stringify(result, null, 2));
-            patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
+            // Wait longer before next attempt
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            waitTime *= 2; // Exponential backoff
+            continue;
+          }
+        } else {
+          // Handle rate limits explicitly
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10;
+            console.log(`Rate limited. Waiting ${waitSeconds} seconds before retry.`);
+            await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
+          } else {
+            console.error(`API error: ${response.status}. Waiting before retry.`);
+            await new Promise(resolve => setTimeout(resolve, waitTime));
+            waitTime *= 2; // Exponential backoff
           }
         }
-      } catch (apiError) {
-        console.error('Error calling Together AI API:', apiError);
-        patternAnalysis = generateFallbackPatternAnalysis(videoAnalyses);
+      } catch (error) {
+        console.error('Error calling Together AI API:', error);
+        // Wait before retry
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        waitTime *= 2; // Exponential backoff
       }
-    }
-
-    // Make sure userId is defined before saving to the database
-    if (!userId) {
-      console.error('No userId provided for analysis');
-      return NextResponse.json({
-        success: false,
-        error: 'No userId provided for analysis'
-      }, { status: 400 });
     }
     
-    // Store the analysis in Supabase
-    try {
-      const { error: dbError } = await supabase
-        .from('pattern_analyses')
-        .insert({
-          user_id: userId,
-          num_videos_analyzed: videoAnalyses.length,
-          video_analyses: videoAnalyses,
-          pattern_analysis: patternAnalysis,
-          search_queries: videoAnalyses.map(v => v.search_query || 'unknown').filter(Boolean),
-          status: 'completed',
-          created_at: new Date().toISOString()
-        })
+    // If we still don't have a pattern analysis, create a basic one from video titles
+    if (!patternAnalysis) {
+      // Extract important information from videos
+      const videoTitles = videoAnalyses.map(v => v.title || 'Untitled video').slice(0, 3);
+      const numVideos = videoAnalyses.length;
+      
+      patternAnalysis = `
+CONTENT OVERVIEW
+Based on analysis of ${numVideos} videos including: ${videoTitles.join(', ')}. These videos follow common patterns in successful content for your industry.
 
-      if (dbError) {
-        console.error('Error storing analysis:', dbError)
-      } else {
-        console.log('Pattern analysis saved successfully to database');
-      }
-    } catch (dbError) {
-      console.error('Database error when saving pattern analysis:', dbError);
+TECHNICAL REQUIREMENTS
+Standard recording equipment is recommended for creating similar content. Focus on good lighting and clear audio.
+
+RECREATION GUIDE
+Follow the standard content creation workflow for your industry, emphasizing quality and consistency.
+
+OPTIMIZATION TIPS
+Post regularly and engage with your audience through comments and shares.
+`;
+    }
+
+    // Store the analysis in Supabase
+    const { error: dbError } = await supabase
+      .from('pattern_analyses')
+      .insert({
+        user_id: userId,
+        num_videos_analyzed: videoAnalyses.length,
+        video_analyses: videoAnalyses,
+        pattern_analysis: patternAnalysis,
+        search_queries: videoAnalyses
+          .filter(v => v.search_query)
+          .map(v => v.search_query || 'unknown')
+          .filter(Boolean),
+        status: 'completed',
+        created_at: new Date().toISOString()
+      })
+
+    if (dbError) {
+      console.error('Error storing analysis:', dbError)
+      return NextResponse.json({
+        success: false,
+        error: `Database error: ${dbError.message}`
+      }, { status: 500 })
     }
 
     return NextResponse.json({ 

@@ -26,67 +26,12 @@ export default function Videos() {
   const [videosPerHashtag, setVideosPerHashtag] = useState(2)
   const [allAnalyses, setAllAnalyses] = useState<any[]>([])
 
-  // Enhance the fallback analysis to provide more specific and useful information
-  const generateFallbackAnalysis = (video: TikTokVideo, query: string) => {
-    // Extract keywords from the search query
-    const keywords = query.split(' ').filter(word => word.length > 3);
-    
-    // Create categories based on the business type (extracted from query)
-    const businessType = query.split(' ')[0]; // First word often indicates business type
-    
-    // Generate more specific recommendations based on query keywords
-    const contentIdeas = keywords.map(keyword => 
-      `- Create content highlighting ${keyword} aspects of your business`
-    ).join('\n');
-
-    // Format the stats section to be more readable
-    const statsSection = `
-ENGAGEMENT STATISTICS
-- Views: ${video.stats.play_count.toLocaleString()}
-- Likes: ${video.stats.like_count.toLocaleString()}
-- Comments: ${video.stats.comment_count.toLocaleString()}
-- Shares: ${video.stats.share_count.toLocaleString()}
-    `;
-    
-    // Create a more detailed analysis
-    return {
-      title: video.title,
-      author: video.author,
-      video_id: video.video_id,
-      search_query: query,
-      analysis: `CONTENT ANALYSIS: "${video.title}"
-
-${statsSection}
-
-VIDEO CONTEXT
-This ${query} video by ${video.author} is part of the trending content in this niche. The high engagement metrics suggest viewers find value in this type of content.
-
-KEY ELEMENTS
-- Visual presentation likely includes demonstrations or tutorials related to ${query}
-- Audio probably contains explanations, tips, or step-by-step instructions
-- On-screen text may highlight important points or steps
-- Professional setting with good lighting to showcase the subject clearly
-
-TARGET AUDIENCE
-- People interested in learning about ${query}
-- Individuals looking for solutions or improvements in ${businessType}
-- Both beginners and experienced practitioners seeking new techniques
-
-CONTENT IDEAS FOR YOUR BUSINESS
-${contentIdeas}
-- Address common questions in your industry through short educational clips
-- Showcase before/after results or transformations
-- Demonstrate your expertise through quick tip videos
-
-This analysis is based on video metadata and industry trends. For a more specific analysis, watch the video directly at: ${video.download_url}`
-    };
-  };
-
   const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string, video: TikTokVideo) => {
     try {
-      // Restore the API call but keep fallback as a backup
       const baseUrl = getBaseUrl();
-      console.log(`Sending analysis request to: ${baseUrl}/api/analyze`);
+      
+      // Log the URL we're calling for debugging
+      console.log(`Calling analyze API at: ${baseUrl}/api/analyze`);
       
       const response = await fetch(`${baseUrl}/api/analyze`, {
         method: 'POST',
@@ -102,46 +47,35 @@ This analysis is based on video metadata and industry trends. For a more specifi
       })
 
       if (!response.ok) {
-        console.warn(`Analysis server error: ${response.status} ${response.statusText}`);
-        return generateFallbackAnalysis(video, searchQuery);
-      }
-
-      const data = await response.json()
-      if (!data.success) {
-        console.warn(`Analysis error: ${data.error}`);
-        return generateFallbackAnalysis(video, searchQuery);
-      }
-
-      // Process the analysis result to ensure it's properly formatted
-      const result = data.result;
-      console.log('Received analysis result:', result);
-
-      // Format the result to ensure it's an object with proper structure
-      if (typeof result === 'string') {
+        const errorMessage = await response.text().catch(() => 'No error details available');
+        console.error(`Analysis server error: ${response.status} - ${errorMessage}`);
+        
+        // Return simplified analysis for now so the UI can continue
         return {
           title: video.title,
-          analysis: result,
-          video_id: video.video_id,
-          search_query: searchQuery
+          analysis: `Video could not be analyzed (Status: ${response.status}).\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.\n\nFor best results, watch the video directly to understand its content.`
         };
       }
 
-      // If the result is already an object, ensure it has the required fields
-      if (typeof result === 'object' && result !== null) {
+      const data = await response.json();
+      if (!data.success) {
+        console.error(`Analysis API returned error: ${data.error || 'Unknown error'}`);
         return {
-          ...result,
-          title: result.title || video.title,
-          video_id: result.video_id || video.video_id,
-          search_query: result.search_query || searchQuery
+          title: video.title,
+          analysis: `Video analysis failed: ${data.error || 'Unknown error'}.\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.`
         };
       }
 
-      // If we don't have a valid result format, use the fallback
-      return generateFallbackAnalysis(video, searchQuery);
+      // Return the successful result
+      return data.result;
     } catch (error) {
-      console.error('Error analyzing video:', error)
-      // Return fallback analysis instead of throwing
-      return generateFallbackAnalysis(video, searchQuery);
+      console.error('Error analyzing video:', error);
+      
+      // Return simplified analysis so the UI can continue
+      return {
+        title: video.title,
+        analysis: `Error during video analysis: ${error instanceof Error ? error.message : 'Unknown error'}\n\nThis video has ${video.stats.play_count} views and ${video.stats.like_count} likes.`
+      };
     }
   }
 
@@ -234,7 +168,7 @@ This analysis is based on video metadata and industry trends. For a more specifi
                 search_query: hashtag
               })
 
-            // Then analyze the video (locally now without API call)
+            // Then analyze the video
             setProgress(`Analyzing video: ${video.title}`)
             const analysisResult = await analyzeVideo(
               video.download_url, 
@@ -252,10 +186,9 @@ This analysis is based on video metadata and industry trends. For a more specifi
         }
       }
 
-      // Let's modify the pattern analysis section of handleAnalyze function to restore API call
       // If we have any successful analyses, analyze patterns
       if (analysisResults.length > 0) {
-        setProgress('Analyzing patterns across videos...');
+        setProgress('Analyzing patterns across videos...')
         try {
           const baseUrl = getBaseUrl();
           const patternResponse = await fetch(`${baseUrl}/api/analyze-patterns`, {
@@ -267,39 +200,13 @@ This analysis is based on video metadata and industry trends. For a more specifi
               videoAnalyses: analysisResults,
               userId: session.user.id
             }),
-          });
+          })
 
           if (!patternResponse.ok) {
-            console.error('Pattern analysis API error:', await patternResponse.text());
-            // If the API call fails, use local fallback
-            const patternAnalysis = {
-              content_overview: `Based on ${analysisResults.length} videos analyzed for ${hashtags.join(', ')}`,
-              common_themes: 'Educational content, tutorials, and demonstrations',
-              key_techniques: 'Clear visuals, concise explanations, and step-by-step instructions',
-              technical_tips: 'Good lighting, stable camera, clear audio',
-              optimization: 'Use relevant hashtags, post consistently, engage with comments'
-            };
-            
-            try {
-              await supabase
-                .from('pattern_analyses')
-                .insert({
-                  user_id: session.user.id,
-                  num_videos_analyzed: analysisResults.length,
-                  video_analyses: analysisResults,
-                  pattern_analysis: JSON.stringify(patternAnalysis, null, 2),
-                  search_queries: hashtags,
-                  status: 'completed',
-                  created_at: new Date().toISOString()
-                });
-            } catch (patternSaveError) {
-              console.error('Error saving pattern analysis:', patternSaveError);
-            }
-          } else {
-            console.log('Pattern analysis API returned successfully');
+            console.error('Pattern analysis failed:', await patternResponse.text())
           }
         } catch (patternError) {
-          console.error('Error in pattern analysis:', patternError);
+          console.error('Error in pattern analysis:', patternError)
         }
       }
 
