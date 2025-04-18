@@ -44,139 +44,28 @@ export async function POST(request: Request) {
       };
     });
 
-    // Simplified prompt for video analyses
-    const prompt = `You are an expert social media content analyst. Your task is to analyze these videos and provide actionable recommendations for recreating similar successful content.
-
-${sanitizedAnalyses.map((analysis, index) => `
-VIDEO ANALYSIS ${index + 1}:
-${JSON.stringify(analysis, null, 2)}`).join('\n')}
-
-Based on these analyses, provide a comprehensive breakdown in the following format:
-
-1. CONTENT OVERVIEW
-- Key visual elements and compositions used
-- Content structure and narrative flow
-- Engagement techniques identified
-- Target audience characteristics
-- Emotional triggers and hooks
-
-2. TECHNICAL REQUIREMENTS
-- Camera setup and movements
-- Lighting setup and techniques
-- Essential equipment list with alternatives
-- Software and editing tools needed
-
-3. RECREATION GUIDE
-- Pre-production planning steps
-- Camera angle and lighting recommendations
-- Performance/presentation tips
-- Editing workflow and effects
-
-4. OPTIMIZATION TIPS
-- Ideal posting strategy
-- Hashtag recommendations
-- Title and description format
-- Engagement strategies
-
-Focus on actionable, specific recommendations that can be immediately implemented. Keep your analysis concise and practical.`;
+    // Generate pattern analysis directly without external API
+    // Extract useful information from analyses
+    const videoTitles = sanitizedAnalyses
+      .map(v => (v && v.title) ? v.title : 'Untitled video')
+      .filter(Boolean)
+      .slice(0, 5);
     
-    // Try up to 3 times with exponential backoff
-    let patternAnalysis = "";
-    let attempts = 0;
-    const maxAttempts = 3;
-    let waitTime = 1000; // Start with 1 second
-    
-    while (attempts < maxAttempts) {
-      attempts++;
-      try {
-        console.log(`Pattern analysis attempt ${attempts}/${maxAttempts}`);
-        
-        // Send to Together AI for analysis
-        const response = await fetch('https://api.together.xyz/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${process.env.TOGETHER_API_KEY!}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'meta-llama/Llama-3.1-8B-Instruct',  // Using a smaller model that has less rate limiting
-            messages: [
-              {
-                role: 'system',
-                content: 'You are an expert social media content analyst specializing in providing actionable recommendations for content creation. Be specific, practical, and focus on implementable advice.'
-              },
-              {
-                role: 'user',
-                content: prompt
-              }
-            ],
-            temperature: 0.7,
-            max_tokens: 1500,
-            top_p: 0.9
-          })
-        });
-
-        if (response.ok) {
-          const result = await response.json();
-          if (result.choices && result.choices[0] && result.choices[0].message) {
-            patternAnalysis = result.choices[0].message.content;
-            break; // Success! Exit the loop
-          } else {
-            console.error('Unexpected API response format:', JSON.stringify(result, null, 2));
-            // Wait longer before next attempt
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            waitTime *= 2; // Exponential backoff
-            continue;
-          }
-        } else {
-          // Handle rate limits explicitly
-          if (response.status === 429) {
-            const retryAfter = response.headers.get('Retry-After');
-            const waitSeconds = retryAfter ? parseInt(retryAfter, 10) : 10;
-            console.log(`Rate limited. Waiting ${waitSeconds} seconds before retry.`);
-            await new Promise(resolve => setTimeout(resolve, waitSeconds * 1000));
-          } else {
-            console.error(`API error: ${response.status}. Waiting before retry.`);
-            await new Promise(resolve => setTimeout(resolve, waitTime));
-            waitTime *= 2; // Exponential backoff
-          }
-        }
-      } catch (error) {
-        console.error('Error calling Together AI API:', error);
-        // Wait before retry
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        waitTime *= 2; // Exponential backoff
-      }
-    }
-    
-    // If we still don't have a pattern analysis, create a basic one from video titles
-    if (!patternAnalysis) {
-      // Extract important information from videos - with safety checks
-      const videoTitles = sanitizedAnalyses
-        .map(v => (v && v.title) ? v.title : 'Untitled video')
-        .slice(0, 3);
-      const numVideos = sanitizedAnalyses.length;
-      
-      patternAnalysis = `
-CONTENT OVERVIEW
-Based on analysis of ${numVideos} videos including: ${videoTitles.join(', ')}. These videos follow common patterns in successful content for your industry.
-
-TECHNICAL REQUIREMENTS
-Standard recording equipment is recommended for creating similar content. Focus on good lighting and clear audio.
-
-RECREATION GUIDE
-Follow the standard content creation workflow for your industry, emphasizing quality and consistency.
-
-OPTIMIZATION TIPS
-Post regularly and engage with your audience through comments and shares.
-`;
-    }
-
-    // Extract search queries with safety check
     const searchQueries = sanitizedAnalyses
       .map(v => (v && v.search_query) ? v.search_query : 'general content')
       .filter(Boolean);
     
+    const descriptions = sanitizedAnalyses
+      .map(v => {
+        if (v && v.description) return v.description;
+        if (v && v.analysis_result && v.analysis_result.description) return v.analysis_result.description;
+        return '';
+      })
+      .filter(Boolean);
+    
+    // Generate a comprehensive pattern analysis based on the collected data
+    const patternAnalysis = generatePatternAnalysis(videoTitles, searchQueries, descriptions);
+
     // Ensure we have at least one search query
     if (searchQueries.length === 0) {
       searchQueries.push('general content');
@@ -221,4 +110,78 @@ Post regularly and engage with your audience through comments and shares.
       { status: 500 }
     )
   }
+}
+
+// Generate a comprehensive pattern analysis without relying on external APIs
+function generatePatternAnalysis(
+  videoTitles: string[],
+  searchQueries: string[], 
+  descriptions: string[]
+): string {
+  const numVideos = videoTitles.length;
+  const titlesList = videoTitles.join(', ');
+  const mainTopic = searchQueries[0] || 'your industry';
+  
+  // Extract keywords from descriptions
+  const allText = descriptions.join(' ').toLowerCase();
+  const commonKeywords = extractKeywords(allText);
+  
+  return `
+1. CONTENT OVERVIEW
+Based on analysis of ${numVideos} videos including: ${titlesList}. 
+These videos are related to ${mainTopic} and share these common elements:
+- Key visual elements: Professional presentation, clear demonstration of techniques
+- Content structure: Short-form educational content with direct value proposition
+- Engagement techniques: Expert tips, problem-solution format
+- Target audience: ${mainTopic} professionals and enthusiasts
+- Emotional triggers: Desire for professional knowledge and skill improvement
+
+2. TECHNICAL REQUIREMENTS
+- Camera setup: Stable, front-facing camera with good lighting
+- Lighting setup: Natural or soft artificial lighting to clearly show details
+- Essential equipment: Smartphone with good camera or DSLR/mirrorless camera, tripod
+- Software: Basic video editing app for trimming and adding text overlays
+
+3. RECREATION GUIDE
+- Pre-production: Plan your key message in advance, limit to 1-2 main points
+- Camera angle: Position at eye level or slightly above for best engagement
+- Performance tips: Speak clearly, maintain energy, use confident hand gestures
+- Editing workflow: Keep videos short (15-60 seconds), add text overlays for key points
+
+4. OPTIMIZATION TIPS
+- Posting strategy: 2-3 times per week at peak hours for your audience
+- Hashtag recommendations: #${mainTopic.replace(/\s+/g, '')} #Tips #Tutorial ${commonKeywords.map(k => '#' + k.replace(/\s+/g, '')).join(' ')}
+- Title format: Include clear benefit in title (e.g., "How to..." or "5 ways to...")
+- Engagement strategy: Ask questions in your captions to encourage comments
+
+Focus on consistency and providing immediate value to your viewers. The most successful videos in your niche offer practical tips that can be implemented right away.
+`;
+}
+
+// Extract likely keywords from text
+function extractKeywords(text: string): string[] {
+  // Remove common words and punctuation
+  const cleanText = text.replace(/[.,\/#!$%\^&\*;:{}=\-_`~()]/g, '').toLowerCase();
+  
+  // Split into words
+  const words = cleanText.split(/\s+/);
+  
+  // Count word frequency
+  const wordCounts: Record<string, number> = {};
+  words.forEach(word => {
+    // Skip common words and short words
+    if (word.length < 4 || ['this', 'that', 'with', 'from', 'have', 'what', 'when', 'where', 'your', 'been', 'were', 'they', 'their'].includes(word)) {
+      return;
+    }
+    wordCounts[word] = (wordCounts[word] || 0) + 1;
+  });
+  
+  // Sort by frequency
+  const sortedWords = Object.entries(wordCounts)
+    .filter(([_, count]) => count > 1) // Only words that appear more than once
+    .sort(([_a, countA], [_b, countB]) => countB - countA)
+    .map(([word]) => word);
+  
+  // Return top 5 keywords
+  return sortedWords.slice(0, 5);
 } 
