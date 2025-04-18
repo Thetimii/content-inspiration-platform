@@ -1,116 +1,114 @@
-# Content Inspiration Platform
+# TikTok Video Analysis Application
 
-A powerful platform that analyzes content from social media platforms to provide personalized content creation insights and recommendations.
+This application helps users analyze TikTok videos to understand content trends and create better content.
 
-## Features
+## Architecture
 
-- **Video Analysis**: Upload videos from TikTok and other platforms for AI-powered analysis
-- **Pattern Recognition**: Identify patterns across successful content to inform your strategy
-- **Daily Inspiration**: Get fresh content ideas based on trending topics and your business profile
-- **Personalized Recommendations**: Receive tailored advice based on your business type and goals
+The application consists of two main components:
 
-## Technology Stack
+1. **Next.js Web Application**: The main user interface and API endpoints
+2. **Video Analyzer Service**: A microservice running on Google Cloud Run that handles the CPU-intensive video analysis
 
-- **Frontend**: Next.js, React, Tailwind CSS
-- **Backend**: Node.js with Next.js API routes
-- **Database**: PostgreSQL with Supabase
-- **AI Integration**: Together.ai for content analysis
-- **Authentication**: Supabase Auth
-
-## Getting Started
+## Setup Instructions
 
 ### Prerequisites
 
-- Node.js (v18+)
-- npm or yarn
-- Python 3.10+ (for video analysis)
-- Supabase account and project
+- Node.js 18+
+- Docker (for deploying the video analyzer service)
+- Google Cloud Platform account
+- Supabase account
+- Together AI API key
+- RapidAPI key (for TikTok API)
 
-### Installation
+### Environment Variables
 
-1. **Clone the repository**
-
-```bash
-git clone https://github.com/sagertim02/content-inspiration-platform.git
-cd content-inspiration-platform
-```
-
-2. **Install dependencies**
+Copy the `.env.example` file to `.env.local` and fill in your credentials:
 
 ```bash
-npm install
-# or
-yarn install
+cp .env.example .env.local
 ```
 
-3. **Set up environment variables**
+### Local Development (Web App)
 
-Create a `.env.local` file in the root directory with the following variables:
+1. Install dependencies:
+   ```bash
+   npm install
+   ```
 
-```
-NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
-TOGETHER_API_KEY=your_together_api_key
-```
+2. Run the development server:
+   ```bash
+   npm run dev
+   ```
 
-4. **Set up the Python video analyzer**
+3. Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-```bash
-bash scripts/setup-video-analyzer.sh
-```
+### Deploying the Video Analyzer Service
 
-5. **Run the development server**
+The video analysis has been outsourced to a separate microservice that runs on Google Cloud Run. This prevents the heavy processing from running on your local machine.
 
-```bash
-npm run dev
-# or
-yarn dev
-```
+1. Navigate to the video analyzer service directory:
+   ```bash
+   cd video-analyzer-service
+   ```
 
-6. **Open [http://localhost:3000](http://localhost:3000) in your browser**
+2. Create a `.env` file with your credentials:
+   ```bash
+   cp .env.example .env
+   ```
 
-## Database Setup
+3. Update the `PROJECT_ID` in `deploy-to-cloud-run.sh` with your GCP project ID.
 
-Execute the migrations in the `supabase/migrations` folder to set up your database:
+4. Make the deployment script executable:
+   ```bash
+   chmod +x deploy-to-cloud-run.sh
+   ```
 
-```bash
-npx supabase-cli db push
-```
+5. Run the deployment script:
+   ```bash
+   ./deploy-to-cloud-run.sh
+   ```
 
-Or manually run the SQL files in the Supabase SQL editor in the following order:
-1. `20240000000000_init.sql`
-2. `20240327000000_add_pattern_analyses.sql`
-3. `20240417000000_add_video_analysis.sql`
+6. After deployment, update the `VIDEO_ANALYZER_SERVICE_URL` in your `.env.local` file with the Cloud Run service URL.
 
-## Usage
+## How It Works
 
-1. **Sign up and complete onboarding**
-   - Provide information about your business and goals
+1. Users search for TikTok videos based on keywords
+2. Selected videos are sent to the Video Analyzer Service
+3. The service analyzes the videos using AI vision models
+4. Analysis results are stored in Supabase
+5. The web app displays the analysis and recommendations
 
-2. **Analyze Videos**
-   - Navigate to the "Analyzed Videos" section
-   - Enter keywords to search for relevant videos
-   - Select videos to analyze
-   - View individual video analyses
+## Project Structure
 
-3. **View Pattern Analysis**
-   - Go to "Today's Inspiration" to see pattern analysis across multiple videos
-   - Review sectioned insights with actionable recommendations
+- `/src`: Next.js application source code
+  - `/app`: Next.js app router components and API routes
+  - `/components`: Reusable UI components
+  - `/lib`: Utility functions and API clients
+  - `/types`: TypeScript type definitions
+- `/video-analyzer-service`: Microservice for video analysis
+  - `server.js`: Express.js server
+  - `Dockerfile`: Container configuration
+  - `deploy-to-cloud-run.sh`: Deployment script
 
-4. **Implement Recommendations**
-   - Use the structured insights to create your own content
-   - Follow technical requirements and optimization tips
+## API Endpoints
+
+- `POST /api/analyze`: Forwards video analysis requests to the Cloud Run service
+- `POST /api/analyze-patterns`: Analyzes patterns across multiple videos
+- `GET /api/search-queries`: Generates search queries based on business context
+
+## Database Schema
+
+The application uses Supabase with the following tables:
+
+- `user_onboarding`: User preferences and business information
+- `tiktok_videos`: Metadata for scraped TikTok videos
+- `video_analysis`: Results of individual video analyses
+- `pattern_analyses`: Results of pattern analysis across multiple videos
+- `temp_videos`: Temporary storage for video processing
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
-## Acknowledgements
-
-- Together.ai for providing the AI capabilities
-- Supabase for database and authentication
-- Next.js and React teams for the frontend framework 
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Submit a pull request
