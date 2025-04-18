@@ -84,12 +84,7 @@ This analysis is based on video metadata and industry trends. For a more specifi
 
   const analyzeVideo = async (videoUrl: string, videoId: string, userId: string, searchQuery: string, video: TikTokVideo) => {
     try {
-      // IMPORTANT: For now, bypass the server analysis completely
-      // This ensures we always get results, even if the API calls are failing
-      console.log(`Generating direct fallback analysis for video ${videoId}`);
-      return generateFallbackAnalysis(video, searchQuery);
-      
-      /* Commented out until server API issues are resolved
+      // Restore the API call but keep fallback as a backup
       const baseUrl = getBaseUrl();
       console.log(`Sending analysis request to: ${baseUrl}/api/analyze`);
       
@@ -117,9 +112,11 @@ This analysis is based on video metadata and industry trends. For a more specifi
         return generateFallbackAnalysis(video, searchQuery);
       }
 
+      // Process the analysis result to ensure it's properly formatted
       const result = data.result;
       console.log('Received analysis result:', result);
 
+      // Format the result to ensure it's an object with proper structure
       if (typeof result === 'string') {
         return {
           title: video.title,
@@ -129,6 +126,7 @@ This analysis is based on video metadata and industry trends. For a more specifi
         };
       }
 
+      // If the result is already an object, ensure it has the required fields
       if (typeof result === 'object' && result !== null) {
         return {
           ...result,
@@ -138,11 +136,11 @@ This analysis is based on video metadata and industry trends. For a more specifi
         };
       }
 
+      // If we don't have a valid result format, use the fallback
       return generateFallbackAnalysis(video, searchQuery);
-      */
-      
     } catch (error) {
       console.error('Error analyzing video:', error)
+      // Return fallback analysis instead of throwing
       return generateFallbackAnalysis(video, searchQuery);
     }
   }
@@ -254,34 +252,54 @@ This analysis is based on video metadata and industry trends. For a more specifi
         }
       }
 
-      // Handle patterns locally without API call (more reliable)
+      // Let's modify the pattern analysis section of handleAnalyze function to restore API call
+      // If we have any successful analyses, analyze patterns
       if (analysisResults.length > 0) {
-        setProgress('Analyzing patterns locally...')
-        
-        // Generate a basic pattern analysis locally - similar to what the API would do
-        const patternAnalysis = {
-          content_overview: `Based on ${analysisResults.length} videos analyzed for ${hashtags.join(', ')}`,
-          common_themes: 'Educational content, tutorials, and demonstrations',
-          key_techniques: 'Clear visuals, concise explanations, and step-by-step instructions',
-          technical_tips: 'Good lighting, stable camera, clear audio',
-          optimization: 'Use relevant hashtags, post consistently, engage with comments'
-        };
-        
-        // Save the pattern analysis to Supabase
+        setProgress('Analyzing patterns across videos...');
         try {
-          await supabase
-            .from('pattern_analyses')
-            .insert({
-              user_id: session.user.id,
-              num_videos_analyzed: analysisResults.length,
-              video_analyses: analysisResults,
-              pattern_analysis: JSON.stringify(patternAnalysis, null, 2),
-              search_queries: hashtags,
-              status: 'completed',
-              created_at: new Date().toISOString()
-            })
-        } catch (patternSaveError) {
-          console.error('Error saving pattern analysis:', patternSaveError)
+          const baseUrl = getBaseUrl();
+          const patternResponse = await fetch(`${baseUrl}/api/analyze-patterns`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ 
+              videoAnalyses: analysisResults,
+              userId: session.user.id
+            }),
+          });
+
+          if (!patternResponse.ok) {
+            console.error('Pattern analysis API error:', await patternResponse.text());
+            // If the API call fails, use local fallback
+            const patternAnalysis = {
+              content_overview: `Based on ${analysisResults.length} videos analyzed for ${hashtags.join(', ')}`,
+              common_themes: 'Educational content, tutorials, and demonstrations',
+              key_techniques: 'Clear visuals, concise explanations, and step-by-step instructions',
+              technical_tips: 'Good lighting, stable camera, clear audio',
+              optimization: 'Use relevant hashtags, post consistently, engage with comments'
+            };
+            
+            try {
+              await supabase
+                .from('pattern_analyses')
+                .insert({
+                  user_id: session.user.id,
+                  num_videos_analyzed: analysisResults.length,
+                  video_analyses: analysisResults,
+                  pattern_analysis: JSON.stringify(patternAnalysis, null, 2),
+                  search_queries: hashtags,
+                  status: 'completed',
+                  created_at: new Date().toISOString()
+                });
+            } catch (patternSaveError) {
+              console.error('Error saving pattern analysis:', patternSaveError);
+            }
+          } else {
+            console.log('Pattern analysis API returned successfully');
+          }
+        } catch (patternError) {
+          console.error('Error in pattern analysis:', patternError);
         }
       }
 
