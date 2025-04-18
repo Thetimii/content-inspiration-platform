@@ -14,15 +14,110 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 )
 
+// Check if video-analyzer is installed and working
+async function isVideoAnalyzerInstalled() {
+  try {
+    // Try to run video-analyzer with --version flag
+    await execAsync('video-analyzer --version')
+    return true
+  } catch (error) {
+    console.warn('video-analyzer not installed or not in PATH:', error)
+    
+    // Try to check if it's installed in the Python user site packages
+    try {
+      const { stdout } = await execAsync('python3 -m site --user-base')
+      const userBasePath = stdout.trim()
+      const videoAnalyzerPath = path.join(userBasePath, 'bin', 'video-analyzer')
+      
+      if (fs.existsSync(videoAnalyzerPath)) {
+        console.log('Found video-analyzer at:', videoAnalyzerPath)
+        process.env.PATH = `${process.env.PATH}:${path.join(userBasePath, 'bin')}`
+        return true
+      }
+    } catch (siteError) {
+      console.warn('Error checking Python site packages:', siteError)
+    }
+    
+    return false
+  }
+}
+
+// Generate AI-based fallback analysis when video-analyzer isn't available
+async function generateFallbackAnalysis(videoInfo: any) {
+  try {
+    const { videoUrl, videoId, searchQuery, videoTitle, playCount, likeCount, commentCount, author } = videoInfo
+    
+    // Create a basic fallback analysis with available metadata
+    return {
+      transcript: "Video transcript unavailable - analysis performed using metadata only",
+      description: `This video appears to be related to "${searchQuery || 'your search topic'}". 
+The video title "${videoTitle || 'Unknown'}" suggests content focused on ${searchQuery}. 
+It has received ${playCount || 'unknown'} views and ${likeCount || 'unknown'} likes, with ${commentCount || 'unknown'} comments.
+Created by ${author || 'unknown creator'}.
+To analyze this content more deeply, please view it directly on TikTok.`,
+      metadata: {
+        duration: "Unknown",
+        resolution: "Unknown",
+        title: videoTitle || "Unknown",
+        author: author || "Unknown",
+        engagement: {
+          views: playCount || 0,
+          likes: likeCount || 0,
+          comments: commentCount || 0
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error generating fallback analysis:', error)
+    return {
+      transcript: "Video analysis unavailable",
+      description: "Unable to analyze this video. Please view it directly on TikTok.",
+      metadata: { duration: "Unknown", resolution: "Unknown" }
+    }
+  }
+}
+
 export async function POST(request: Request) {
   try {
-    // Extract video URL from the request
-    const { videoUrl, userId, videoTitle, playCount, likeCount, author } = await request.json()
+    // Extract video URL and info from the request
+    const requestData = await request.json()
+    const { videoUrl, videoId, userId, searchQuery, videoTitle, playCount, likeCount, commentCount, author } = requestData
+    
     if (!videoUrl) {
       return NextResponse.json({ error: 'Video URL is required' }, { status: 400 })
     }
 
     console.log(`Analyzing video: ${videoUrl}`)
+    
+    // Check if video-analyzer is installed
+    const analyzerInstalled = await isVideoAnalyzerInstalled()
+    if (!analyzerInstalled) {
+      console.warn('video-analyzer not available - generating fallback analysis')
+      
+      // Generate fallback analysis
+      const fallbackAnalysis = await generateFallbackAnalysis(requestData)
+      
+      // Store the fallback analysis in Supabase if userId is provided
+      if (userId && videoId) {
+        const { error: dbError } = await supabase
+          .from('video_analysis')
+          .insert({
+            user_id: userId,
+            video_id: videoId,
+            analysis_result: fallbackAnalysis
+          })
+
+        if (dbError) {
+          console.error('Error storing fallback analysis:', dbError)
+        }
+      }
+      
+      return NextResponse.json({ 
+        success: true, 
+        analysis: fallbackAnalysis,
+        isPlaceholder: true
+      })
+    }
     
     // Create a unique output directory for each analysis
     const outputDir = path.join('/tmp', `video-analysis-${uuidv4()}`)
@@ -48,25 +143,19 @@ export async function POST(request: Request) {
       const analysisJson = fs.readFileSync(analysisJsonPath, 'utf8')
       const analysis = JSON.parse(analysisJson)
       
-      // Store the analysis in Supabase
-      // Skipping temp_videos table insert to avoid the not-null constraint error
-      
       // If provided, store the video analysis
-      const { error: dbError } = await supabase
-        .from('video_analyses')
-        .insert({
-          user_id: userId,
-          video_url: videoUrl,
-          video_title: videoTitle,
-          play_count: playCount,
-          like_count: likeCount,
-          author_username: author,
-          analysis_result: analysis,
-          created_at: new Date().toISOString()
-        })
+      if (userId && videoId) {
+        const { error: dbError } = await supabase
+          .from('video_analysis')
+          .insert({
+            user_id: userId,
+            video_id: videoId,
+            analysis_result: analysis
+          })
 
-      if (dbError) {
-        console.error('Error storing analysis:', dbError)
+        if (dbError) {
+          console.error('Error storing analysis:', dbError)
+        }
       }
       
       // Clean up the temporary directory
@@ -83,6 +172,9 @@ export async function POST(request: Request) {
     } catch (analyzerError) {
       console.error('Error running video analyzer:', analyzerError)
       
+      // Generate fallback analysis if actual analysis fails
+      const fallbackAnalysis = await generateFallbackAnalysis(requestData)
+      
       // Clean up the temporary directory if it exists
       try {
         if (fs.existsSync(outputDir)) {
@@ -92,10 +184,27 @@ export async function POST(request: Request) {
         console.error('Error cleaning up temp directory:', cleanupError)
       }
       
+      // Store the fallback analysis if userId is provided
+      if (userId && videoId) {
+        const { error: dbError } = await supabase
+          .from('video_analysis')
+          .insert({
+            user_id: userId,
+            video_id: videoId,
+            analysis_result: fallbackAnalysis
+          })
+
+        if (dbError) {
+          console.error('Error storing fallback analysis:', dbError)
+        }
+      }
+      
       return NextResponse.json({ 
-        success: false, 
-        error: `Failed to analyze video: ${analyzerError instanceof Error ? analyzerError.message : 'Unknown error'}`
-      }, { status: 500 })
+        success: true, 
+        analysis: fallbackAnalysis,
+        isPlaceholder: true,
+        originalError: `Failed to analyze video: ${analyzerError instanceof Error ? analyzerError.message : 'Unknown error'}`
+      })
     }
   } catch (error) {
     console.error('Error in video analysis:', error)

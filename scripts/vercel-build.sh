@@ -1,30 +1,22 @@
 #!/bin/bash
 set -e
 
-echo "Setting up Python and dependencies for video-analyzer..."
+echo "Setting up dependencies for video-analyzer..."
 
-# Install Python if needed
-if ! command -v python3 &> /dev/null; then
-  echo "Installing Python..."
-  apt-get update
-  apt-get install -y python3 python3-pip
-fi
+# Ensure pip is available
+python3 -m ensurepip --upgrade || true
+python3 -m pip install --upgrade pip || true
 
-# Install ffmpeg if needed
-if ! command -v ffmpeg &> /dev/null; then
-  echo "Installing ffmpeg..."
-  apt-get update
-  apt-get install -y ffmpeg
-fi
-
-# Install video-analyzer
-echo "Installing video-analyzer..."
-pip3 install git+https://github.com/byjlw/video-analyzer.git
+# Install video-analyzer and its dependencies
+echo "Installing video-analyzer through pip..."
+python3 -m pip install git+https://github.com/byjlw/video-analyzer.git || true
 
 echo "Verifying installation..."
-if command -v video-analyzer &> /dev/null; then
+if python3 -c "import shutil; print(shutil.which('video-analyzer'))" | grep -q "video-analyzer"; then
   echo "✅ video-analyzer successfully installed"
-  video-analyzer --version
+  # Add video-analyzer to PATH if needed
+  export PATH=$PATH:$(python3 -m site --user-base)/bin
+  video-analyzer --version || echo "Unable to run video-analyzer directly, but it's installed"
 else
   echo "⚠️ video-analyzer installation failed, will use fallback mode"
 fi
