@@ -50,28 +50,6 @@ export async function POST(request: Request) {
     const { videoUrl, videoId, userId, searchQuery } = await request.json()
     console.log('Starting video analysis:', { videoUrl, videoId, userId, searchQuery })
 
-    // Store video metadata in temp_videos table
-    try {
-      const { error: insertError } = await supabase
-        .from('temp_videos')
-        .insert({
-          user_id: userId,
-          video_id: videoId,
-          file_name: `${videoId}.mp4`,
-          file_data: null, // Not storing the actual file data
-          content_type: 'video/mp4'
-        })
-      
-      if (insertError) {
-        console.warn(`Warning: Failed to store video metadata: ${insertError.message}`)
-      } else {
-        console.log('Video metadata stored in database successfully')
-      }
-    } catch (dbError) {
-      console.warn('Error storing video metadata:', dbError);
-      // Continue even if this fails
-    }
-
     // Check if we're running in Vercel production - if so, use a fallback approach
     let analysisText = '';
     
@@ -181,7 +159,7 @@ export async function POST(request: Request) {
       }
     }
 
-    // Always try to save the analysis, even if it's a fallback
+    // Always try to save the analysis to the video_analysis table
     console.log('Saving analysis to Supabase for video ID:', videoId);
     
     try {

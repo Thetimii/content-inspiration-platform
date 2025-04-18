@@ -6,6 +6,18 @@ import { Button } from './Button'
 import { ErrorMessage } from './ErrorMessage'
 import { Spinner } from './Spinner'
 
+// Helper to get the base URL
+const getBaseUrl = () => {
+  if (typeof window !== 'undefined') {
+    // Client-side
+    return window.location.origin;
+  }
+  // Server-side
+  return process.env.VERCEL_URL ? 
+    `https://${process.env.VERCEL_URL}` : 
+    'http://localhost:3000';
+};
+
 interface AnalysisResultsProps {
   searchQuery: string
   analysis: any
@@ -47,7 +59,51 @@ export const AnalysisResults = ({
     setPatternError(null)
     
     try {
-      console.log('Generating pattern analysis locally');
+      // Call the server API for pattern analysis
+      const baseUrl = getBaseUrl();
+      console.log(`Calling pattern analysis API at ${baseUrl}/api/analyze-patterns`);
+      
+      const response = await fetch(`${baseUrl}/api/analyze-patterns`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoAnalyses: Array.isArray(analysis) ? analysis : [analysis],
+          userId: localStorage.getItem('userId') || 'anonymous',
+        }),
+      });
+
+      if (!response.ok) {
+        console.error(`Pattern analysis API error: ${response.status}`);
+        throw new Error(`Server error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      console.log('Pattern analysis API response:', data);
+      
+      if (!data.success) {
+        throw new Error(data.error || 'Pattern analysis failed');
+      }
+      
+      // Save the pattern analysis
+      setPatternAnalysis(data.result.pattern_analysis);
+      
+    } catch (err) {
+      console.error('Pattern analysis error:', err);
+      setPatternError(err instanceof Error ? err.message : 'Failed to analyze patterns');
+      
+      // Fall back to local pattern generation
+      generateLocalPattern();
+    } finally {
+      setPatternLoading(false);
+    }
+  }
+  
+  // Separate function for local pattern generation as fallback
+  const generateLocalPattern = () => {
+    try {
+      console.log('Generating pattern analysis locally as fallback');
       
       const analysisItems = Array.isArray(analysis) ? analysis : [analysis];
       const searchQueries = analysisItems
@@ -56,7 +112,7 @@ export const AnalysisResults = ({
       const uniqueQueries = Array.from(new Set(searchQueries));
       
       const patternText = `
-# CONTENT PATTERN ANALYSIS
+# CONTENT PATTERN ANALYSIS (Local Fallback)
 
 ## CONTENT OVERVIEW
 - Analysis based on ${analysisItems.length} videos from searches: ${uniqueQueries.join(', ')}
@@ -87,20 +143,9 @@ export const AnalysisResults = ({
 - Cross-promote your content on other platforms
 `;
       
-      try {
-        localStorage.setItem('pattern_analysis', patternText);
-        localStorage.setItem('pattern_analysis_timestamp', new Date().toISOString());
-      } catch (storageError) {
-        console.warn('Unable to save to localStorage:', storageError);
-      }
-      
       setPatternAnalysis(patternText);
-      
-    } catch (err) {
-      console.error('Pattern analysis error:', err)
-      setPatternError(err instanceof Error ? err.message : 'Failed to analyze patterns')
-    } finally {
-      setPatternLoading(false)
+    } catch (fallbackError) {
+      console.error('Error in local fallback generation:', fallbackError);
     }
   }
 
@@ -109,6 +154,11 @@ export const AnalysisResults = ({
     setPatternAnalysis(null)
     setPatternError(null)
   }, [analysis])
+
+  // Log the analysis data for debugging
+  useEffect(() => {
+    console.log('Current analysis data:', analysis);
+  }, [analysis]);
 
   if (isLoading) {
     return (
@@ -216,7 +266,10 @@ export const AnalysisResults = ({
                 <ReactMarkdown>{analysis.analysis}</ReactMarkdown>
               </div>
             ) : (
-              <pre>{JSON.stringify(analysis, null, 2)}</pre>
+              <div className={styles.errorContainer}>
+                <ErrorMessage message="Invalid analysis format" />
+                <pre className={styles.jsonDebug}>{JSON.stringify(analysis, null, 2)}</pre>
+              </div>
             )
           )}
         </div>
