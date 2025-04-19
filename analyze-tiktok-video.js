@@ -3,11 +3,11 @@ require('dotenv').config();
 const { createClient } = require('@supabase/supabase-js');
 const fetch = require('node-fetch');
 
-// Initialize Supabase client with hardcoded values from .env.local
-const SUPABASE_URL = 'https://cxtystgaxoeygwbvgqcg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImN4dHlzdGdheG9leWd3YnZncWNnIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0MjgyODM1NywiZXhwIjoyMDU4NDA0MzU3fQ.VY6xMxrgz7BBJVyGTFsuLpJxsNDPRDo-ZnMemcLcOEU';
-
-const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Initialize Supabase client from environment variables
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+);
 
 // Video Analyzer API URL
 const VIDEO_ANALYZER_API_URL = process.env.VIDEO_ANALYZER_API_URL || 'https://video-analyzer-y3m4k6qhqq-uc.a.run.app';
