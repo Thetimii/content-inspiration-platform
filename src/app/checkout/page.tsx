@@ -41,54 +41,11 @@ export default function CheckoutPage() {
     checkUser();
   }, [router]);
 
-  const handleCheckout = async () => {
+  const handleCheckout = () => {
     setLoading(true);
-    setError(null);
 
-    try {
-      // Hardcoded price ID for testing
-      const priceId = 'price_1RH6CRG4vQYDStWYJIIk27cL';
-
-      const response = await fetch('/api/create-checkout-session', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          price_id: priceId,
-        }),
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error?.message || `Server error: ${response.status}`);
-      }
-
-      const data = await response.json();
-
-      if (!data.sessionId) {
-        throw new Error('No session ID returned from server');
-      }
-
-      // Redirect to Stripe Checkout
-      const stripe = await stripePromise;
-      if (!stripe) {
-        throw new Error('Failed to load Stripe');
-      }
-
-      const { error: stripeError } = await stripe.redirectToCheckout({
-        sessionId: data.sessionId,
-      });
-
-      if (stripeError) {
-        throw new Error(stripeError.message || 'Stripe redirect error');
-      }
-    } catch (err: any) {
-      console.error('Checkout error:', err);
-      setError(err.message || 'An error occurred during checkout');
-    } finally {
-      setLoading(false);
-    }
+    // Direct redirect to Stripe payment link
+    window.location.href = 'https://buy.stripe.com/bIY6s09dwbpm8r6bII';
   };
 
   return (
@@ -138,19 +95,7 @@ export default function CheckoutPage() {
           <p className="text-sm text-gray-400 mb-4">Credit card required for trial</p>
         </div>
 
-        {error && (
-          <motion.div
-            className="bg-red-900/30 border border-red-500 text-red-300 p-4 rounded-lg mb-6 flex items-center"
-            initial={{ opacity: 0, y: -10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2 text-red-500" viewBox="0 0 20 20" fill="currentColor">
-              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            {error}
-          </motion.div>
-        )}
+        {/* Error message section removed as we're using direct link */}
 
         <div className="flex justify-between">
           <Link
@@ -167,7 +112,7 @@ export default function CheckoutPage() {
             whileHover={{ scale: loading ? 1 : 1.05 }}
             transition={{ duration: 0.2 }}
           >
-            {loading ? 'Processing...' : 'Proceed to Payment'} {!loading && <FiCreditCard className="ml-2" />}
+            {loading ? 'Redirecting...' : 'Go to Stripe Payment'} {!loading && <FiCreditCard className="ml-2" />}
           </motion.button>
         </div>
       </motion.div>
