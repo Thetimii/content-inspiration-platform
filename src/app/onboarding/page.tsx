@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { motion } from 'framer-motion';
 import { FiArrowRight, FiArrowLeft, FiCheck, FiUser, FiClock, FiStar } from 'react-icons/fi';
+import { stripePromise } from '@/utils/stripe';
 
 // Onboarding steps
 const STEPS = {
@@ -81,8 +82,8 @@ export default function Onboarding() {
         throw error;
       }
 
-      // Redirect to dashboard
-      router.push('/dashboard');
+      // Redirect to checkout page instead of dashboard
+      router.push('/checkout');
     } catch (error: any) {
       setError(error.message || 'An error occurred during onboarding');
       console.error('Error saving onboarding data:', error);
