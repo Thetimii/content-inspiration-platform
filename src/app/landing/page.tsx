@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import Link from 'next/link';
 import Image from 'next/image';
 import { FiArrowRight, FiCheck, FiTrendingUp, FiVideo, FiMail, FiClock, FiStar } from 'react-icons/fi';
+import CheckoutButton from '@/components/CheckoutButton';
 
 export default function LandingPage() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -303,7 +304,7 @@ export default function LandingPage() {
               <div className="bg-gradient-to-r from-indigo-600 to-purple-600 p-6">
                 <h3 className="text-2xl font-bold text-white mb-2">Pro Plan</h3>
                 <div className="flex items-baseline">
-                  <span className="text-4xl font-bold text-white">$29.95</span>
+                  <span className="text-4xl font-bold text-white">$39.95</span>
                   <span className="text-xl text-indigo-100 ml-1">/month</span>
                 </div>
                 <p className="text-indigo-100 mt-2">First week free</p>
@@ -337,12 +338,12 @@ export default function LandingPage() {
                   </li>
                 </ul>
 
-                <Link
-                  href="/auth/signup"
+                <CheckoutButton
+                  priceId={process.env.NEXT_PUBLIC_PRICE_ID || ''}
                   className="mt-6 w-full flex items-center justify-center px-8 py-3 border border-transparent text-base font-medium rounded-md text-white bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 md:py-4 md:text-lg md:px-10 transition-all duration-300 transform hover:scale-105"
                 >
                   Start Free Trial
-                </Link>
+                </CheckoutButton>
                 <p className="text-sm text-center text-gray-400 mt-3">Credit card required for trial</p>
               </div>
             </div>
@@ -373,12 +374,12 @@ export default function LandingPage() {
               <p className="text-xl text-gray-300 mb-8">
                 Join thousands of creators who are saving time and growing their audience with Lazy Trends.
               </p>
-              <Link
-                href="/auth/signup"
+              <CheckoutButton
+                priceId={process.env.NEXT_PUBLIC_PRICE_ID || ''}
                 className="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white px-8 py-4 rounded-lg font-medium inline-flex items-center justify-center transition-all duration-300 transform hover:scale-105"
               >
                 Start Your Free Trial <FiArrowRight className="ml-2" />
-              </Link>
+              </CheckoutButton>
 
             </div>
           </motion.div>
