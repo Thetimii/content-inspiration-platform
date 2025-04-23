@@ -1,0 +1,172 @@
+/* Glassmorphism Utilities */
+
+/* Light Mode Glass */
+.glass-light {
+  background: rgba(255, 255, 255, 0.7);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
+}
+
+/* Dark Mode Glass */
+.glass-dark {
+  background: rgba(17, 25, 40, 0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+}
+
+/* Glass Card Light */
+.glass-card-light {
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(209, 213, 219, 0.3);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+}
+
+.glass-card-light:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  transform: translateY(-2px);
+}
+
+/* Glass Card Dark */
+.glass-card-dark {
+  background: rgba(30, 41, 59, 0.8);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2), 0 2px 4px -1px rgba(0, 0, 0, 0.1);
+  transition: all 0.3s ease;
+}
+
+.glass-card-dark:hover {
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.15);
+  transform: translateY(-2px);
+}
+
+/* Glass Button Light */
+.glass-button-light {
+  background: rgba(79, 70, 229, 0.8);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(79, 70, 229, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+  transition: all 0.3s ease;
+}
+
+.glass-button-light:hover {
+  background: rgba(79, 70, 229, 0.9);
+  box-shadow: 0 6px 10px -1px rgba(79, 70, 229, 0.3);
+}
+
+/* Glass Button Dark */
+.glass-button-dark {
+  background: rgba(99, 102, 241, 0.8);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.glass-button-dark:hover {
+  background: rgba(99, 102, 241, 0.9);
+  box-shadow: 0 6px 10px -1px rgba(0, 0, 0, 0.4);
+}
+
+/* 3D Card Effect */
+.card-3d {
+  transform-style: preserve-3d;
+  perspective: 1000px;
+}
+
+.card-3d-content {
+  transform: translateZ(20px);
+  transition: transform 0.3s ease;
+}
+
+.card-3d:hover .card-3d-content {
+  transform: translateZ(30px);
+}
+
+/* Gradient Backgrounds */
+.gradient-bg-light {
+  background: linear-gradient(135deg, #f5f7fa 0%, #e4e7eb 100%);
+}
+
+.gradient-bg-dark {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+}
+
+/* Gradient Accent */
+.gradient-accent {
+  background: linear-gradient(135deg, #4f46e5 0%, #6366f1 50%, #818cf8 100%);
+}
+
+/* Glow Effects */
+.glow-light {
+  box-shadow: 0 0 15px rgba(79, 70, 229, 0.3);
+}
+
+.glow-dark {
+  box-shadow: 0 0 15px rgba(99, 102, 241, 0.4);
+}
+
+/* Animated Gradient Border */
+.animated-border-light {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.animated-border-light::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #4f46e5, #6366f1, #818cf8, #4f46e5);
+  background-size: 400% 400%;
+  z-index: -1;
+  border-radius: 14px;
+  animation: gradientBorder 3s ease infinite;
+}
+
+.animated-border-dark {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.animated-border-dark::before {
+  content: '';
+  position: absolute;
+  top: -2px;
+  left: -2px;
+  right: -2px;
+  bottom: -2px;
+  background: linear-gradient(45deg, #6366f1, #818cf8, #a5b4fc, #6366f1);
+  background-size: 400% 400%;
+  z-index: -1;
+  border-radius: 14px;
+  animation: gradientBorder 3s ease infinite;
+}
+
+@keyframes gradientBorder {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
