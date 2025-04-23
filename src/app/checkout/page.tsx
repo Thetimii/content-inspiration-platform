@@ -46,20 +46,28 @@ export default function CheckoutPage() {
     setError(null);
 
     try {
+      // Hardcoded price ID for testing
+      const priceId = 'price_1RH6CRG4vQYDStWYJIIk27cL';
+
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          price_id: process.env.NEXT_PUBLIC_PRICE_ID,
+          price_id: priceId,
         }),
       });
 
-      const { sessionId, error } = await response.json();
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || `Server error: ${response.status}`);
+      }
 
-      if (error) {
-        throw new Error(error.message || 'Failed to create checkout session');
+      const data = await response.json();
+
+      if (!data.sessionId) {
+        throw new Error('No session ID returned from server');
       }
 
       // Redirect to Stripe Checkout
@@ -69,7 +77,7 @@ export default function CheckoutPage() {
       }
 
       const { error: stripeError } = await stripe.redirectToCheckout({
-        sessionId,
+        sessionId: data.sessionId,
       });
 
       if (stripeError) {
@@ -107,7 +115,7 @@ export default function CheckoutPage() {
             <span className="text-lg text-indigo-100 ml-1">/month</span>
           </div>
           <p className="text-indigo-100 mb-4">First week free</p>
-          
+
           <ul className="space-y-3 mb-6">
             <li className="flex items-center">
               <FiCheck className="h-5 w-5 text-green-400 mr-3" />
@@ -126,7 +134,7 @@ export default function CheckoutPage() {
               <span className="text-gray-300">Actionable content scripts</span>
             </li>
           </ul>
-          
+
           <p className="text-sm text-gray-400 mb-4">Credit card required for trial</p>
         </div>
 
