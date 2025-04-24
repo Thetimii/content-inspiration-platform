@@ -101,32 +101,51 @@ export async function POST(request: Request) {
       return `Video ${video.id} (${video.trend_queries.query}): ${video.frame_analysis}`;
     }).join('\n\n');
 
-    const prompt = `Based on the following TikTok video analyses, generate a comprehensive recommendation for creating trending content.
+    // Get the user's business description
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('business_description')
+      .eq('id', userId)
+      .single();
+
+    const businessDescription = userData?.business_description || 'food business';
+
+    const prompt = `You are a TikTok content strategy expert specializing in food content. Based on the following TikTok video analyses, generate a comprehensive recommendation for a ${businessDescription}.
 
 Video Analyses:
 ${videoAnalyses}
 
+Focus on extracting SPECIFIC techniques, styles, and patterns from these actual videos. Don't provide generic advice - look at what's actually working in these trending videos and provide concrete recommendations based on them.
+
 Please provide your recommendation in the following format:
 
-# Video Analysis
-[Provide a detailed analysis of the common patterns, themes, and techniques used in these trending videos]
+# Content Patterns
+[Identify 3-5 specific content patterns that appear across multiple trending videos. Be very specific about what types of food content is trending, what formats work best, and what specific hooks or angles are most effective.]
 
-# Cutting/Pacing Techniques
-[List the specific editing techniques, transitions, and pacing patterns observed]
+# Visual Techniques
+[Describe 3-5 specific visual techniques used in these videos - camera angles, lighting, framing, colors, etc. Be specific about how food is presented visually.]
 
-# Guide for Recreation
-- [Step-by-step bullet points on how to recreate similar content]
-- [Include specific technical advice]
-- [Mention equipment or tools needed]
+# Editing & Pacing
+[Describe the specific editing style and pacing used in these trending videos - how long are clips, what transitions are used, how text is incorporated, etc.]
 
-# Video Ideas
-1. [Specific video idea 1]
-2. [Specific video idea 2]
-3. [Specific video idea 3]
-4. [Specific video idea 4]
-5. [Specific video idea 5]
+# Audio Strategy
+[Describe the audio approach - voice narration style, music choices, sound effects, etc. that make these videos engaging]
 
-Make your recommendations specific, actionable, and based directly on the patterns observed in the analyzed videos.`;
+# Step-by-Step Recreation Guide
+1. [First step with specific details]
+2. [Second step with specific details]
+3. [Third step with specific details]
+4. [Fourth step with specific details]
+5. [Fifth step with specific details]
+
+# 5 Video Ideas for ${businessDescription}
+1. [Specific video idea tailored to this business]
+2. [Specific video idea tailored to this business]
+3. [Specific video idea tailored to this business]
+4. [Specific video idea tailored to this business]
+5. [Specific video idea tailored to this business]
+
+Make your recommendations extremely specific, actionable, and tailored to a ${businessDescription}. Focus on what's actually shown in the analyzed videos, not generic TikTok advice.`;
 
     console.log('Generating recommendation with OpenRouter...');
 
@@ -281,44 +300,68 @@ function generateSimpleAnalysis(video: any): string {
   const views = video.views ? `${video.views.toLocaleString()} views` : 'Unknown views';
   const likes = video.likes ? `${video.likes.toLocaleString()} likes` : 'Unknown likes';
 
-  return `# Video Analysis
+  // Extract key information from the caption
+  const caption = video.caption || '';
+  const cleanCaption = caption.replace(/#\w+/g, '').trim(); // Remove hashtags
 
-## Content Overview
-This TikTok video appears to be about ${video.caption || 'unknown content'}. The video has gained significant attention with ${views} and ${likes}.
+  // Try to identify the main subject/topic
+  let topic = 'food preparation or recipe';
+  if (cleanCaption.toLowerCase().includes('recipe')) {
+    topic = 'a recipe';
+  } else if (cleanCaption.toLowerCase().includes('cook')) {
+    topic = 'cooking demonstration';
+  } else if (cleanCaption.toLowerCase().includes('food')) {
+    topic = 'food presentation';
+  } else if (cleanCaption.toLowerCase().includes('eat') || cleanCaption.toLowerCase().includes('eating')) {
+    topic = 'food tasting or eating';
+  } else if (cleanCaption.toLowerCase().includes('restaurant') || cleanCaption.toLowerCase().includes('cafe')) {
+    topic = 'restaurant or cafe visit';
+  } else if (cleanCaption.toLowerCase().includes('review')) {
+    topic = 'food review';
+  }
 
-## Hashtags Used
-${hashtags ? `The creator used the following hashtags: ${hashtags}` : 'No hashtags were detected in this video.'}
+  // Try to identify specific food items mentioned
+  const foodItems = [];
+  const commonFoodWords = ['pizza', 'burger', 'sandwich', 'taco', 'pasta', 'noodle', 'rice', 'chicken', 'beef', 'pork', 'fish', 'seafood', 'vegetable', 'fruit', 'dessert', 'cake', 'cookie', 'ice cream', 'coffee', 'tea', 'juice', 'smoothie', 'cocktail', 'drink'];
 
-## Visual Style
-The video likely uses popular TikTok visual styles including quick cuts, on-screen text, and engaging visuals to maintain viewer attention.
+  for (const food of commonFoodWords) {
+    if (cleanCaption.toLowerCase().includes(food)) {
+      foodItems.push(food);
+    }
+  }
+
+  const foodDescription = foodItems.length > 0
+    ? `featuring ${foodItems.join(', ')}`
+    : '';
+
+  return `# Video Summary
+
+## What's in the Video
+This TikTok video shows ${topic} ${foodDescription}. Based on the caption "${cleanCaption}", the creator is likely demonstrating food preparation, showcasing a dish, or sharing a food experience.
+
+## Video Statistics
+The video has received ${views} and ${likes}, indicating its popularity among viewers.
+
+## Hashtags
+${hashtags ? `The creator used these hashtags to increase discoverability: ${hashtags}` : 'No hashtags were detected in this video.'}
+
+## Visual Content
+The video likely shows close-up shots of food preparation or the final dish, possibly with text overlays highlighting key ingredients or steps. The creator may appear in the video explaining the process or reacting to the food.
 
 ## Audio Elements
-The video likely includes background music, possibly voice narration, and sound effects to enhance engagement.
+The audio probably includes either the creator's voice explaining the process, background music to enhance the mood, or trending TikTok sounds to increase engagement.
 
-## Engagement Techniques
-- Hook in the first 3 seconds to capture attention
-- Clear call-to-action encouraging likes, comments, or shares
-- Relatable or entertaining content that resonates with the target audience
-- Trending sounds or effects to increase discoverability
+# Techniques Used
+- Close-up shots of food to showcase details and textures
+- Bright, well-lit scenes to make the food look appetizing
+- Quick cuts between preparation steps to maintain viewer interest
+- Text overlays to highlight key information
+- Before and after comparisons of the cooking process
+- Reaction shots showing enjoyment of the food
 
-## Cutting/Pacing Techniques
-- Quick cuts between scenes to maintain viewer attention
-- Jump cuts to remove dead space and keep the video concise
-- Seamless transitions between different segments
-- Strategic pauses for emphasis on key points
-
-# Guide for Recreation
-- Start with a strong hook in the first 3 seconds
-- Keep the video concise and to the point
-- Use trending sounds or effects
-- Include on-screen text to emphasize key points
-- End with a clear call-to-action
-- Use relevant hashtags to increase discoverability
-
-# Video Ideas
-1. Create a response or duet to this video
-2. Make a similar video with your own unique twist
-3. Create a series expanding on the topic covered in this video
-4. Develop a behind-the-scenes look at creating content like this
-5. Create a tutorial teaching others how to make similar content`;
+# Why This Video Works
+- Food content is universally appealing and easy to engage with
+- The video likely has a satisfying payoff showing the final dish
+- The creator may use humor or personality to make the content more engaging
+- The content is practical and potentially useful to viewers interested in food`;
 }
