@@ -1,77 +1,53 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
-import { getStripeInstance, SUBSCRIPTION_PLAN } from '@/utils/stripe';
+import Stripe from 'stripe';
+
+// Initialize Stripe directly
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+  apiVersion: '2023-10-16',
+});
+
+// Trial period in days
+const TRIAL_PERIOD_DAYS = 7;
 
 export async function POST(req: Request) {
   try {
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
-    const stripe = getStripeInstance();
+    // Log the start of the function for debugging
+    console.log('Starting create-checkout-session handler');
     
     // Get the user from the session
+    const cookieStore = cookies();
+    const supabase = createClient(cookieStore);
     const { data: { user } } = await supabase.auth.getUser();
     
     if (!user) {
+      console.log('No authenticated user found');
       return NextResponse.json(
         { error: 'You must be logged in to create a checkout session' },
         { status: 401 }
       );
     }
+    
+    console.log('Authenticated user:', user.id);
 
-    // Check if user already has an active subscription
-    const { data: userData } = await supabase
-      .from('users')
-      .select('stripe_customer_id, stripe_subscription_id, subscription_status')
-      .eq('id', user.id)
-      .single();
-
-    // If user already has an active subscription, redirect to customer portal instead
-    if (userData?.subscription_status === 'active' || userData?.subscription_status === 'trialing') {
-      // Create a customer portal session for existing subscribers
-      if (userData.stripe_customer_id) {
-        const portalSession = await stripe.billingPortal.sessions.create({
-          customer: userData.stripe_customer_id,
-          return_url: `${req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard`,
-        });
-        
-        return NextResponse.json({ url: portalSession.url });
-      }
-    }
-
-    // For new subscriptions, create a checkout session
-    let customerId = userData?.stripe_customer_id;
-
-    // If no customer ID exists, create a new customer
-    if (!customerId) {
-      const customer = await stripe.customers.create({
-        email: user.email,
-        metadata: {
-          userId: user.id
-        }
-      });
-      customerId = customer.id;
-
-      // Update user with Stripe customer ID
-      await supabase
-        .from('users')
-        .update({ stripe_customer_id: customerId })
-        .eq('id', user.id);
-    }
-
-    // Get the price ID from environment variables - no fallbacks
-    const priceId = process.env.NEXT_PUBLIC_PRICE_ID;
+    // Get the price ID from environment variables
+    const priceId = process.env.STRIPE_PRICE_ID;
     
     if (!priceId) {
-      console.error('Missing NEXT_PUBLIC_PRICE_ID environment variable');
-      throw new Error('Price ID is missing. Please check your environment variables.');
+      console.error('Missing STRIPE_PRICE_ID environment variable');
+      return NextResponse.json(
+        { error: 'Price ID is missing. Please contact support.' },
+        { status: 500 }
+      );
     }
     
     console.log('Using price ID:', priceId);
 
     // Create Checkout Session
+    console.log('Creating checkout session...');
     const session = await stripe.checkout.sessions.create({
-      customer_email: user.email, // Pass the user's email to ensure it's the same
+      payment_method_types: ['card'],
       line_items: [
         {
           price: priceId,
@@ -79,27 +55,28 @@ export async function POST(req: Request) {
         },
       ],
       mode: 'subscription',
-      success_url: `${req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/checkout?canceled=true`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/checkout?canceled=true`,
+      customer_email: user.email,
       metadata: {
         userId: user.id,
       },
       subscription_data: {
-        trial_period_days: SUBSCRIPTION_PLAN.trialPeriodDays,
+        trial_period_days: TRIAL_PERIOD_DAYS,
         metadata: {
           userId: user.id,
         },
       },
-      payment_method_types: ['card'],
       billing_address_collection: 'auto',
       allow_promotion_codes: true,
     });
 
-    return NextResponse.json({ sessionId: session.id, url: session.url });
+    console.log('Checkout session created:', session.id);
+    return NextResponse.json({ url: session.url });
   } catch (err: any) {
     console.error('Error creating checkout session:', err);
     return NextResponse.json(
-      { error: { message: err.message || 'An error occurred during checkout' } },
+      { error: err.message || 'An error occurred during checkout' },
       { status: 500 }
     );
   }

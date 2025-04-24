@@ -43,8 +43,10 @@ export default function CheckoutPage() {
 
   const handleCheckout = async () => {
     setLoading(true);
+    setError(null);
 
     try {
+      console.log('Creating checkout session...');
       // Use our API to create a checkout session
       const response = await fetch('/api/create-checkout-session', {
         method: 'POST',
@@ -53,23 +55,23 @@ export default function CheckoutPage() {
         },
       });
 
+      const data = await response.json();
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.error?.message || 'Failed to create checkout session');
+        throw new Error(data.error || 'Failed to create checkout session');
       }
 
-      const { url } = await response.json();
+      console.log('Checkout session created, redirecting to:', data.url);
 
       // Redirect to Stripe Checkout
-      if (url) {
-        window.location.href = url;
+      if (data.url) {
+        window.location.href = data.url;
       } else {
-        // Fallback to direct link if no URL is returned
-        window.location.href = 'https://buy.stripe.com/bIY6s09dwbpm8r6bII';
+        throw new Error('No checkout URL returned from the server');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating checkout session:', error);
-      setError('Failed to create checkout session. Please try again.');
+      setError(error.message || 'Failed to create checkout session. Please try again.');
       setLoading(false);
     }
   };
