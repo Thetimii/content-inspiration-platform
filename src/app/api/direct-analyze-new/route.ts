@@ -110,58 +110,84 @@ export async function POST(request: Request) {
 
     // Get a clean download URL from RapidAPI
     let cleanDownloadUrl = '';
-    try {
-      console.log(`Fetching clean download URL from RapidAPI for video ID: ${tiktokVideoId}`);
+    let rapidApiResponse: any = null;
 
-      // Use the exact endpoint and format from the example
-      console.log(`Using video URL for RapidAPI: ${video.video_url}`);
-      const rapidApiResponse = await axios.get(
-        `https://tiktok-download-video1.p.rapidapi.com/getVideo`,
-        {
-          params: {
-            url: video.video_url,
-            hd: '1'
-          },
-          headers: {
-            'X-RapidAPI-Key': rapidApiKey,
-            'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+    // Check if we already have a clean download URL
+    let cleanDownloadUrl = '';
+
+    // If the video already has a download_url, check if it's a clean URL
+    if (video.download_url && video.download_url.includes('http')) {
+      console.log(`Video already has a download URL: ${video.download_url}`);
+      cleanDownloadUrl = video.download_url;
+    } else {
+      // If not, get a clean download URL from RapidAPI
+      try {
+        console.log(`Fetching clean download URL from RapidAPI for video ID: ${tiktokVideoId}`);
+
+        // Use the exact endpoint and format from the example
+        console.log(`Using video URL for RapidAPI: ${video.video_url}`);
+        const rapidApiResponse = await axios.get(
+          `https://tiktok-download-video1.p.rapidapi.com/getVideo`,
+          {
+            params: {
+              url: video.video_url,
+              hd: '1'
+            },
+            headers: {
+              'X-RapidAPI-Key': rapidApiKey,
+              'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+            }
+          }
+        );
+
+        console.log('RapidAPI response:', JSON.stringify(rapidApiResponse.data, null, 2));
+
+        // Try multiple possible response formats based on API documentation
+        if (rapidApiResponse.data) {
+          // Format 1: data.play
+          if (rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
+            cleanDownloadUrl = rapidApiResponse.data.data.play;
+          }
+          // Format 2: data.video
+          else if (rapidApiResponse.data.data && rapidApiResponse.data.data.video) {
+            cleanDownloadUrl = rapidApiResponse.data.data.video;
+          }
+          // Format 3: video[0]
+          else if (rapidApiResponse.data.video && rapidApiResponse.data.video[0]) {
+            cleanDownloadUrl = rapidApiResponse.data.video[0];
+          }
+          // Format 4: video (string)
+          else if (typeof rapidApiResponse.data.video === 'string') {
+            cleanDownloadUrl = rapidApiResponse.data.video;
+          }
+          // Format 5: nowm_video_url
+          else if (rapidApiResponse.data.nowm_video_url) {
+            cleanDownloadUrl = rapidApiResponse.data.nowm_video_url;
+          }
+          // Format 6: video_no_watermark
+          else if (rapidApiResponse.data.video_no_watermark) {
+            cleanDownloadUrl = rapidApiResponse.data.video_no_watermark;
+          }
+          // Format 7: direct video URL in response
+          else if (typeof rapidApiResponse.data === 'string' && rapidApiResponse.data.includes('http')) {
+            cleanDownloadUrl = rapidApiResponse.data;
           }
         }
-      );
+      } catch (error) {
+        console.error('Error fetching clean download URL:', error);
 
-      console.log('RapidAPI response:', JSON.stringify(rapidApiResponse.data, null, 2));
-
-      // Try multiple possible response formats based on API documentation
-      if (rapidApiResponse.data) {
-        // Format 1: data.play
-        if (rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
-          cleanDownloadUrl = rapidApiResponse.data.data.play;
-        }
-        // Format 2: data.video
-        else if (rapidApiResponse.data.data && rapidApiResponse.data.data.video) {
-          cleanDownloadUrl = rapidApiResponse.data.data.video;
-        }
-        // Format 3: video[0]
-        else if (rapidApiResponse.data.video && rapidApiResponse.data.video[0]) {
-          cleanDownloadUrl = rapidApiResponse.data.video[0];
-        }
-        // Format 4: video (string)
-        else if (typeof rapidApiResponse.data.video === 'string') {
-          cleanDownloadUrl = rapidApiResponse.data.video;
-        }
-        // Format 5: nowm_video_url
-        else if (rapidApiResponse.data.nowm_video_url) {
-          cleanDownloadUrl = rapidApiResponse.data.nowm_video_url;
-        }
-        // Format 6: video_no_watermark
-        else if (rapidApiResponse.data.video_no_watermark) {
-          cleanDownloadUrl = rapidApiResponse.data.video_no_watermark;
-        }
-        // Format 7: direct video URL in response
-        else if (typeof rapidApiResponse.data === 'string' && rapidApiResponse.data.includes('http')) {
-          cleanDownloadUrl = rapidApiResponse.data;
+        // If we have a video_url, use that as a fallback
+        if (video.video_url) {
+          console.log(`Falling back to video_url: ${video.video_url}`);
+          cleanDownloadUrl = video.video_url;
+        } else {
+          return NextResponse.json(
+            { error: 'Failed to get clean download URL and no fallback available' },
+            { status: 500 }
+          );
         }
       }
+    }
 
       if (cleanDownloadUrl) {
         console.log(`Got clean download URL: ${cleanDownloadUrl}`);

@@ -103,13 +103,73 @@ export async function POST(request: Request) {
           origin_cover: item.origin_cover
         });
 
-        // Initially use whatever URL is available
-        let downloadUrl = item.download || item.wmplay || item.play || '';
+        // Initially use whatever URL is available as a fallback
+        let initialDownloadUrl = item.download || item.wmplay || item.play || '';
 
         // Log the initially selected download URL
-        console.log(`Initial download URL: ${downloadUrl}`);
+        console.log(`Initial download URL: ${initialDownloadUrl}`);
 
-        // We'll get a clean download URL later when we analyze the video
+        // Get a clean, no-watermark download URL immediately using the getVideo endpoint
+        let downloadUrl = initialDownloadUrl; // Default fallback
+
+        try {
+          // Extract the video URL for the RapidAPI call
+          const videoUrl = item.play || item.wmplay || '';
+
+          if (videoUrl) {
+            console.log(`Getting clean download URL for video: ${videoUrl}`);
+
+            // Call the RapidAPI getVideo endpoint to get a clean download URL
+            const cleanUrlResponse = await axios.get(
+              'https://tiktok-download-video1.p.rapidapi.com/getVideo',
+              {
+                params: {
+                  url: videoUrl,
+                  hd: '1'
+                },
+                headers: {
+                  'X-RapidAPI-Key': rapidApiKey,
+                  'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+                }
+              }
+            );
+
+            console.log('RapidAPI getVideo response:', JSON.stringify(cleanUrlResponse.data, null, 2));
+
+            // Try to extract the clean download URL from various possible response formats
+            if (cleanUrlResponse.data) {
+              // Format 1: data.play
+              if (cleanUrlResponse.data.data && cleanUrlResponse.data.data.play) {
+                downloadUrl = cleanUrlResponse.data.data.play;
+              }
+              // Format 2: data.video
+              else if (cleanUrlResponse.data.data && cleanUrlResponse.data.data.video) {
+                downloadUrl = cleanUrlResponse.data.data.video;
+              }
+              // Format 3: video[0]
+              else if (cleanUrlResponse.data.video && cleanUrlResponse.data.video[0]) {
+                downloadUrl = cleanUrlResponse.data.video[0];
+              }
+              // Format 4: video (string)
+              else if (typeof cleanUrlResponse.data.video === 'string') {
+                downloadUrl = cleanUrlResponse.data.video;
+              }
+              // Format 5: nowm_video_url
+              else if (cleanUrlResponse.data.nowm_video_url) {
+                downloadUrl = cleanUrlResponse.data.nowm_video_url;
+              }
+              // Format 6: video_no_watermark
+              else if (cleanUrlResponse.data.video_no_watermark) {
+                downloadUrl = cleanUrlResponse.data.video_no_watermark;
+              }
+            }
+
+            console.log(`Got clean download URL: ${downloadUrl}`);
+          }
+        } catch (error) {
+          console.error('Error getting clean download URL:', error);
+          console.log(`Falling back to initial download URL: ${initialDownloadUrl}`);
+        }
 
         const mappedVideo = {
           video_url: item.play || item.wmplay || '',
