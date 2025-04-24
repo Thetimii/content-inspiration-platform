@@ -34,7 +34,7 @@ export async function POST(request: Request) {
 
     // Use download_url if available, otherwise fall back to video_url
     const urlToAnalyze = videoData.download_url || videoData.video_url;
-    
+
     if (!urlToAnalyze) {
       return NextResponse.json(
         { error: 'No URL available for this video' },
@@ -62,11 +62,11 @@ export async function POST(request: Request) {
     // Sanitize the API key
     const sanitizedApiKey = apiKey.trim();
 
-    // Make the API call to OpenRouter using the Qwen 2.5 VL model
+    // Make the API call to OpenRouter using the free Qwen 2.5 VL model
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'qwen/qwen-2.5-vl-72b-instruct',
+        model: 'qwen/qwen2.5-vl-32b-instruct:free',
         messages: [
           {
             role: 'user',
