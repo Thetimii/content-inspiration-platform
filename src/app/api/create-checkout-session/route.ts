@@ -1,67 +1,112 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@/utils/supabase/server';
-import { cookies } from 'next/headers';
 import Stripe from 'stripe';
+import { supabase } from '@/utils/supabase';
 
 export async function POST(req: Request) {
-  console.log('Starting create-checkout-session handler');
-  
   try {
     // Initialize Stripe
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-      apiVersion: '2023-10-16',
-    });
-    
-    // Get the user from the session
-    const cookieStore = cookies();
-    const supabase = createClient(cookieStore);
-    const { data: { user } } = await supabase.auth.getUser();
-    
-    if (!user) {
-      console.log('No authenticated user found');
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
       return NextResponse.json(
-        { error: 'You must be logged in to create a checkout session' },
-        { status: 401 }
-      );
-    }
-    
-    console.log('Authenticated user:', user.id);
-
-    // Get the price ID from environment variables
-    const priceId = process.env.STRIPE_PRICE_ID;
-    
-    if (!priceId) {
-      console.error('Missing STRIPE_PRICE_ID environment variable');
-      return NextResponse.json(
-        { error: 'Price ID is missing. Please contact support.' },
+        { error: 'Stripe secret key is missing' },
         { status: 500 }
       );
     }
-    
-    console.log('Using price ID:', priceId);
 
-    // Create a simple checkout session with minimal options
-    console.log('Creating checkout session...');
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2025-03-31.basil' as any,
+    });
+
+    // Get the current authenticated user
+    const { data: sessionData } = await supabase.auth.getSession();
+    if (!sessionData.session) {
+      return NextResponse.json(
+        { error: 'User not authenticated' },
+        { status: 401 }
+      );
+    }
+
+    const userId = sessionData.session.user.id;
+    const userEmail = sessionData.session.user.email;
+
+    if (!userId || !userEmail) {
+      return NextResponse.json(
+        { error: 'User ID or email not found' },
+        { status: 400 }
+      );
+    }
+
+    // Check if user already has a Stripe customer ID
+    const { data: userData, error: userError } = await supabase
+      .from('users')
+      .select('stripe_customer_id')
+      .eq('id', userId)
+      .single();
+
+    if (userError && userError.code !== 'PGRST116') {
+      console.error('Error fetching user data:', userError);
+      return NextResponse.json(
+        { error: 'Failed to fetch user data' },
+        { status: 500 }
+      );
+    }
+
+    // Create or retrieve Stripe customer
+    let customerId = userData?.stripe_customer_id;
+    
+    if (!customerId) {
+      // Create a new customer in Stripe
+      const customer = await stripe.customers.create({
+        email: userEmail,
+        metadata: {
+          userId: userId
+        }
+      });
+      
+      customerId = customer.id;
+      
+      // Update user record with Stripe customer ID
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', userId);
+      
+      if (updateError) {
+        console.error('Error updating user with Stripe customer ID:', updateError);
+        // Continue anyway as the checkout can still work
+      }
+    }
+
+    // Create a checkout session
     const session = await stripe.checkout.sessions.create({
+      customer: customerId,
       payment_method_types: ['card'],
       line_items: [
         {
-          price: priceId,
+          price: process.env.STRIPE_PRICE_ID, // Use the price ID from environment variables
           quantity: 1,
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/checkout?canceled=true`,
-      customer_email: user.email,
+      success_url: `${process.env.NEXT_PUBLIC_BASE_URL}/dashboard?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${process.env.NEXT_PUBLIC_BASE_URL}/checkout`,
+      subscription_data: {
+        trial_period_days: 7, // 7-day free trial
+        metadata: {
+          userId: userId
+        }
+      },
+      metadata: {
+        userId: userId
+      }
     });
 
-    console.log('Checkout session created:', session.id);
+    // Return the checkout session URL
     return NextResponse.json({ url: session.url });
-  } catch (err: any) {
-    console.error('Error creating checkout session:', err);
+  } catch (error: any) {
+    console.error('Error creating checkout session:', error);
     return NextResponse.json(
-      { error: err.message || 'An error occurred during checkout' },
+      { error: error.message || 'An error occurred creating the checkout session' },
       { status: 500 }
     );
   }
