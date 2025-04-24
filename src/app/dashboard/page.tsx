@@ -570,20 +570,12 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              <div className={`${theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'} p-6 rounded-xl mb-8`}>
-                <h2 className="text-xl font-semibold mb-6 flex items-center">
-                  <FiCreditCard className="mr-2 text-indigo-600" />
-                  Subscription Management
-                </h2>
-                <SubscriptionStatus className="mb-6" />
-
-                <div className="mt-8 border-t border-gray-200 pt-6">
-                  <h3 className="text-lg font-medium mb-4">Manage Your Subscription</h3>
-                  <p className="text-gray-500 mb-4">
-                    Update your payment method, view billing history, or cancel your subscription.
-                  </p>
-                  <ManageSubscriptionButton />
-                </div>
+              {/* Redirect to the subscription page */}
+              {typeof window !== 'undefined' && window.location.pathname !== '/dashboard/subscription' && (
+                router.push('/dashboard/subscription')
+              )}
+              <div className="flex justify-center items-center py-12">
+                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
               </div>
             </motion.div>
           )}

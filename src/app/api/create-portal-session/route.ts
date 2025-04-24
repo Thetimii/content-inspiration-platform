@@ -7,6 +7,7 @@ export async function POST(req: Request) {
     // Initialize Stripe
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
+      console.error('Stripe secret key is missing');
       return NextResponse.json(
         { error: 'Stripe secret key is missing' },
         { status: 500 }
@@ -20,6 +21,7 @@ export async function POST(req: Request) {
     // Get the current authenticated user
     const { data: sessionData } = await supabase.auth.getSession();
     if (!sessionData.session) {
+      console.error('User not authenticated');
       return NextResponse.json(
         { error: 'User not authenticated' },
         { status: 401 }
@@ -27,11 +29,12 @@ export async function POST(req: Request) {
     }
 
     const userId = sessionData.session.user.id;
+    console.log('User ID:', userId);
 
     // Get the user's Stripe customer ID
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('stripe_customer_id')
+      .select('stripe_customer_id, email')
       .eq('id', userId)
       .single();
 
@@ -43,16 +46,37 @@ export async function POST(req: Request) {
       );
     }
 
-    if (!userData.stripe_customer_id) {
-      return NextResponse.json(
-        { error: 'No Stripe customer ID found for this user' },
-        { status: 400 }
-      );
+    console.log('User data:', userData);
+
+    // If no customer ID exists, create one
+    let customerId = userData.stripe_customer_id;
+
+    if (!customerId) {
+      // Create a new customer in Stripe
+      const customer = await stripe.customers.create({
+        email: userData.email,
+        metadata: {
+          userId: userId
+        }
+      });
+
+      customerId = customer.id;
+
+      // Update user record with Stripe customer ID
+      const { error: updateError } = await supabase
+        .from('users')
+        .update({ stripe_customer_id: customerId })
+        .eq('id', userId);
+
+      if (updateError) {
+        console.error('Error updating user with Stripe customer ID:', updateError);
+        // Continue anyway as the portal can still work
+      }
     }
 
     // Create a billing portal session
     const portalSession = await stripe.billingPortal.sessions.create({
-      customer: userData.stripe_customer_id,
+      customer: customerId,
       return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/subscription`,
     });
 
