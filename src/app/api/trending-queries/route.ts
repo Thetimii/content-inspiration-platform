@@ -322,8 +322,8 @@ export async function POST(request: Request) {
         // This allows the current request to complete quickly
         for (const videoId of videoIdsForAnalysis) {
           try {
-            // Make a non-blocking API call to analyze each video using the direct approach
-            fetch(new URL('/api/analyze-video-simple', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
+            // Make a non-blocking API call to analyze each video using the non-blocking approach
+            fetch(new URL('/api/analyze-video-nonblocking', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -333,7 +333,7 @@ export async function POST(request: Request) {
               console.error(`Error analyzing video ${videoId}:`, error);
             });
 
-            console.log(`Triggered direct analysis for video ${videoId}`);
+            console.log(`Triggered non-blocking analysis for video ${videoId}`);
           } catch (analysisError) {
             console.error(`Error setting up analysis for video ${videoId}:`, analysisError);
           }
