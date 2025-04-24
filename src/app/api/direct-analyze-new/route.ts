@@ -4,7 +4,8 @@ import { supabase } from '@/utils/supabase';
 
 /**
  * API endpoint to directly analyze a single video
- * This version passes a clean, no-watermark video URL to the OpenRouter API
+ * This version handles Vercel's timeout limitations by starting the analysis
+ * and immediately returning a response, then updating the database when complete
  */
 export async function POST(request: Request) {
   try {
@@ -64,7 +65,7 @@ export async function POST(request: Request) {
 
     // Step 1: Get a clean, no-watermark download URL from RapidAPI
     console.log(`Getting clean download URL for video: ${video.video_url}`);
-    
+
     let downloadUrl = '';
     try {
       const rapidApiResponse = await axios.get(
@@ -80,14 +81,14 @@ export async function POST(request: Request) {
           }
         }
       );
-      
+
       console.log('RapidAPI response received');
-      
+
       // Extract the download URL from the response
       if (rapidApiResponse.data && rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
         downloadUrl = rapidApiResponse.data.data.play;
         console.log(`Got clean download URL: ${downloadUrl}`);
-        
+
         // Update the video record with the download URL
         await supabase
           .from('tiktok_videos')
@@ -96,7 +97,7 @@ export async function POST(request: Request) {
       } else {
         console.error('Could not extract download URL from RapidAPI response');
         console.error('Response:', JSON.stringify(rapidApiResponse.data, null, 2));
-        
+
         // Fall back to the existing download_url or video_url
         downloadUrl = video.download_url || video.video_url;
         console.log(`Falling back to: ${downloadUrl}`);
@@ -106,7 +107,7 @@ export async function POST(request: Request) {
       downloadUrl = video.download_url || video.video_url;
       console.log(`Error occurred, falling back to: ${downloadUrl}`);
     }
-    
+
     if (!downloadUrl) {
       return NextResponse.json(
         { error: 'Could not get a valid download URL for the video' },
@@ -114,16 +115,51 @@ export async function POST(request: Request) {
       );
     }
 
-    // Step 2: Analyze the video using OpenRouter API
-    console.log(`Analyzing video using OpenRouter API: ${downloadUrl}`);
-    
+    // Update the video status to indicate analysis is in progress
+    await supabase
+      .from('tiktok_videos')
+      .update({
+        frame_analysis: 'Analysis in progress...',
+        last_analyzed_at: new Date().toISOString()
+      })
+      .eq('id', videoId);
+
+    // Start the analysis process in the background without waiting for it to complete
+    // This prevents Vercel's 10-second timeout from being triggered
+    analyzeVideoInBackground(videoId, downloadUrl);
+
+    // Return a response immediately
+    return NextResponse.json({
+      success: true,
+      message: 'Video analysis started',
+      video_id: videoId,
+      status: 'processing'
+    });
+
+  } catch (error: any) {
+    console.error('Unexpected error in direct-analyze-new route:', error);
+
+    return NextResponse.json(
+      { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
+ * Analyze a video in the background and update the database when complete
+ * This function runs independently of the HTTP request/response cycle
+ */
+async function analyzeVideoInBackground(videoId: string, downloadUrl: string) {
+  try {
+    console.log(`Starting background analysis for video ${videoId}`);
+
     // Get the OpenRouter API key
     const openRouterApiKey = process.env.OPENROUTER_API_KEY;
     if (!openRouterApiKey) {
-      return NextResponse.json(
-        { error: 'OpenRouter API key is missing' },
-        { status: 500 }
-      );
+      console.error('OpenRouter API key is missing');
+      await updateVideoWithError(videoId, 'OpenRouter API key is missing');
+      return;
     }
 
     // Prepare the prompt for video analysis
@@ -137,6 +173,57 @@ export async function POST(request: Request) {
 Be specific and detailed in your analysis.`;
 
     try {
+      console.log(`Calling OpenRouter API for video ${videoId}`);
+
+      // First, verify that the download URL is accessible
+      try {
+        console.log(`Verifying download URL is accessible: ${downloadUrl}`);
+
+        // Try to get a fresh download URL from the database first
+        console.log(`Getting fresh video data from database`);
+        const { data: freshVideo } = await supabase
+          .from('tiktok_videos')
+          .select('video_url, download_url')
+          .eq('id', videoId)
+          .single();
+
+        if (freshVideo && freshVideo.download_url && freshVideo.download_url !== downloadUrl) {
+          console.log(`Found different download URL in database: ${freshVideo.download_url}`);
+          downloadUrl = freshVideo.download_url;
+        }
+
+        // Now test the URL
+        try {
+          const testResponse = await axios.head(downloadUrl, {
+            timeout: 10000,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+          });
+          console.log(`Download URL is accessible, status: ${testResponse.status}`);
+        } catch (headError) {
+          // If HEAD request fails, try a GET request instead
+          console.log(`HEAD request failed, trying GET request`);
+          const getResponse = await axios.get(downloadUrl, {
+            timeout: 10000,
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            }
+          });
+          console.log(`GET request successful, status: ${getResponse.status}`);
+        }
+      } catch (urlError: any) {
+        console.error(`Download URL is not accessible: ${downloadUrl}`);
+        console.error(`Error: ${urlError.message}`);
+
+        // Instead of throwing an error, update the video with an error message and return
+        await updateVideoWithError(videoId, `Video URL is not accessible: ${urlError.message}`);
+        return;
+      }
+
+      // Now proceed with the OpenRouter API call
+      console.log(`Sending request to OpenRouter API with model: qwen/qwen-2.5-vl-72b-instruct`);
       const openRouterResponse = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         {
@@ -161,71 +248,68 @@ Be specific and detailed in your analysis.`;
           timeout: 120000 // 2 minute timeout
         }
       );
-      
+
       console.log('OpenRouter API response received');
-      
+
       // Extract the analysis from the response
       const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
-      
+
       if (!analysis || analysis.length < 10) {
         console.error('Empty or too short analysis received');
-        return NextResponse.json(
-          { error: 'The AI model returned an empty or too short analysis' },
-          { status: 500 }
-        );
+        await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
+        return;
       }
-      
-      console.log(`Analysis received, length: ${analysis.length} characters`);
-      
+
+      console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
+
       // Update the video with the analysis
-      const { data: updatedVideo, error: updateError } = await supabase
+      const { error: updateError } = await supabase
         .from('tiktok_videos')
         .update({
           frame_analysis: analysis,
           summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
           last_analyzed_at: new Date().toISOString()
         })
-        .eq('id', videoId)
-        .select();
-      
+        .eq('id', videoId);
+
       if (updateError) {
         console.error('Error updating video with analysis:', updateError);
-        return NextResponse.json(
-          { error: 'Error saving analysis to database' },
-          { status: 500 }
-        );
+        return;
       }
-      
+
       console.log(`Successfully updated video ${videoId} with analysis`);
-      
-      return NextResponse.json({
-        success: true,
-        message: 'Video analyzed successfully',
-        video: updatedVideo[0],
-        analysis
-      });
-    } catch (error) {
+
+    } catch (error: any) {
       console.error('Error analyzing video with OpenRouter:', error);
       console.error('Error details:', {
-        message: error.message,
+        message: error.message || 'Unknown error',
         status: error.response?.status,
         data: error.response?.data
       });
-      
-      return NextResponse.json(
-        { 
-          error: 'Error analyzing video with AI',
-          details: error.message
-        },
-        { status: 500 }
-      );
+
+      await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
     }
-  } catch (error) {
-    console.error('Unexpected error in direct-analyze-new route:', error);
-    
-    return NextResponse.json(
-      { error: 'An unexpected error occurred' },
-      { status: 500 }
-    );
+  } catch (error: any) {
+    console.error('Unexpected error in background analysis:', error);
+    await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
+  }
+}
+
+/**
+ * Update a video with an error message
+ */
+async function updateVideoWithError(videoId: string, errorMessage: string) {
+  try {
+    await supabase
+      .from('tiktok_videos')
+      .update({
+        frame_analysis: `Analysis failed: ${errorMessage}`,
+        last_analyzed_at: new Date().toISOString()
+      })
+      .eq('id', videoId);
+
+    console.log(`Updated video ${videoId} with error message`);
+  } catch (error: any) {
+    console.error('Error updating video with error message:', error);
   }
 }
