@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     // Start the analysis process in the background without waiting for it to complete
     // This prevents Vercel's 10-second timeout from being triggered
     analyzeVideoInBackground(videoId, video.video_url);
-    
+
     // Return a response immediately
     return NextResponse.json({
       success: true,
@@ -73,10 +73,10 @@ export async function POST(request: Request) {
       video_id: videoId,
       status: 'processing'
     });
-    
+
   } catch (error: any) {
     console.error('Unexpected error in direct-analyze-simple route:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
@@ -113,26 +113,26 @@ Be specific and detailed in your analysis.`;
 
     try {
       console.log(`Calling OpenRouter API for video ${videoId}`);
-      
+
       // Prepare the request payload
       const requestPayload = {
-        model: "meta-llama/llama-3-70b-vision-instruct:free",
+        model: "meta-llama/llama-3-8b-vision:free",
         messages: [
           {
             role: "user",
             content: [
               { type: "text", text: prompt },
-              { 
-                type: "image_url", 
-                image_url: { 
-                  url: videoUrl 
-                } 
+              {
+                type: "image_url",
+                image_url: {
+                  url: videoUrl
+                }
               }
             ]
           }
         ]
       };
-      
+
       // Prepare the headers
       const headers = {
         'Authorization': `Bearer ${openRouterApiKey.trim()}`,
@@ -140,10 +140,10 @@ Be specific and detailed in your analysis.`;
         'X-Title': 'Lazy Trends',
         'Content-Type': 'application/json'
       };
-      
-      console.log('Making OpenRouter API call...');
+
+      console.log('Making OpenRouter API call with model: meta-llama/llama-3-8b-vision:free');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
-      
+
       const openRouterResponse = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         requestPayload,
@@ -152,21 +152,21 @@ Be specific and detailed in your analysis.`;
           timeout: 120000 // 2 minute timeout
         }
       );
-      
+
       console.log('OpenRouter API response received');
       console.log('Response status:', openRouterResponse.status);
-      
+
       // Extract the analysis from the response
       const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
-      
+
       if (!analysis || analysis.length < 10) {
         console.error('Empty or too short analysis received');
         await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
         return;
       }
-      
+
       console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
-      
+
       // Update the video with the analysis
       const { error: updateError } = await supabase
         .from('tiktok_videos')
@@ -176,12 +176,12 @@ Be specific and detailed in your analysis.`;
           last_analyzed_at: new Date().toISOString()
         })
         .eq('id', videoId);
-      
+
       if (updateError) {
         console.error('Error updating video with analysis:', updateError);
         return;
       }
-      
+
       console.log(`Successfully updated video ${videoId} with analysis`);
     } catch (error: any) {
       console.error('Error analyzing video with OpenRouter:', error);
@@ -190,7 +190,7 @@ Be specific and detailed in your analysis.`;
         status: error.response?.status,
         data: error.response?.data
       });
-      
+
       await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
     }
   } catch (error: any) {
@@ -211,7 +211,7 @@ async function updateVideoWithError(videoId: string, errorMessage: string) {
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId);
-    
+
     console.log(`Updated video ${videoId} with error message`);
   } catch (error: any) {
     console.error('Error updating video with error message:', error);
