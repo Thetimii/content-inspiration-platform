@@ -59,7 +59,7 @@ export default function WelcomeSection({
 
           <motion.p
             className={`${
-              theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+              theme === 'dark' ? 'text-gray-300' : 'text-black'
             }`}
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
@@ -71,7 +71,7 @@ export default function WelcomeSection({
           {lastUpdateTime && (
             <motion.div
               className={`flex items-center mt-2 text-sm ${
-                theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                theme === 'dark' ? 'text-gray-400' : 'text-black'
               }`}
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}

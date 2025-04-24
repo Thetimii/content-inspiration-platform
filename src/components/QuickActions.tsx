@@ -83,7 +83,7 @@ export default function QuickActions({
                   : 'glass-button-light'
                 : theme === 'dark'
                 ? 'bg-gray-800 hover:bg-gray-700 text-gray-200'
-                : 'bg-white hover:bg-gray-50 text-gray-700 border border-gray-200'
+                : 'bg-white hover:bg-gray-50 text-black border border-gray-200'
             } p-3 rounded-lg flex flex-col items-center justify-center h-24 ${
               action.disabled ? 'opacity-60 cursor-not-allowed' : ''
             }`}

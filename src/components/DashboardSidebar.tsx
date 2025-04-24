@@ -154,7 +154,7 @@ export default function DashboardSidebar({
               exit={{ opacity: 0 }}
               className="flex justify-between items-center mb-4"
             >
-              <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-600'}`}>
+              <span className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-black'}`}>
                 Theme
               </span>
               <ThemeToggle />

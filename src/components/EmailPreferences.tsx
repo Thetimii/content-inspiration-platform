@@ -140,7 +140,7 @@ export default function EmailPreferences({ userId }: EmailPreferencesProps) {
               Receive daily recommendation emails
             </div>
           </label>
-          <p className={`text-sm mt-1 ml-16 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+          <p className={`text-sm mt-1 ml-16 ${theme === 'dark' ? 'text-gray-400' : 'text-black'}`}>
             Get your latest TikTok trend recommendations delivered to your inbox
           </p>
         </div>
@@ -148,7 +148,7 @@ export default function EmailPreferences({ userId }: EmailPreferencesProps) {
         {/* Email time preference */}
         {emailNotifications && (
           <div className="ml-16">
-            <label className={`block text-sm font-medium mb-2 flex items-center ${theme === 'dark' ? 'text-gray-300' : 'text-gray-700'}`}>
+            <label className={`block text-sm font-medium mb-2 flex items-center ${theme === 'dark' ? 'text-gray-300' : 'text-black'}`}>
               <FiClock className={`mr-2 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-500'}`} />
               Preferred delivery time (UTC)
             </label>
@@ -176,11 +176,11 @@ export default function EmailPreferences({ userId }: EmailPreferencesProps) {
                   </option>
                 ))}
               </select>
-              <span className={`text-sm ml-2 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              <span className={`text-sm ml-2 ${theme === 'dark' ? 'text-gray-400' : 'text-black'}`}>
                 ({formatTime(emailHour, emailMinute)} UTC)
               </span>
             </div>
-            <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+            <p className={`text-xs mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-black'}`}>
               Your local time may differ based on your timezone
             </p>
           </div>

@@ -23,7 +23,7 @@ export default function StatisticsCard({
   color = 'indigo'
 }: StatisticsCardProps) {
   const { theme } = useTheme();
-  
+
   // Color mapping
   const colorMap = {
     indigo: {
@@ -75,9 +75,9 @@ export default function StatisticsCard({
       }
     }
   };
-  
+
   const currentColor = colorMap[color][theme === 'dark' ? 'dark' : 'light'];
-  
+
   return (
     <motion.div
       className={`${
@@ -89,21 +89,21 @@ export default function StatisticsCard({
       whileHover={{ y: -5 }}
     >
       {/* Background decoration */}
-      <div className="absolute -right-4 -bottom-4 w-24 h-24 rounded-full opacity-10 bg-current" 
+      <div className="absolute -right-4 -bottom-4 w-24 h-24 rounded-full opacity-10 bg-current"
         style={{ color: currentColor.text.replace('text-', '') }}></div>
-      
+
       <div className="flex justify-between items-start">
         <div>
-          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+          <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-black'}`}>
             {title}
           </p>
           <h3 className={`text-2xl font-bold mt-1 ${theme === 'dark' ? 'text-white' : 'text-gray-800'}`}>
             {value}
           </h3>
-          
+
           {trend && (
             <div className={`flex items-center mt-2 text-sm ${
-              trend.isPositive 
+              trend.isPositive
                 ? theme === 'dark' ? 'text-green-400' : 'text-green-600'
                 : theme === 'dark' ? 'text-red-400' : 'text-red-600'
             }`}>
@@ -128,7 +128,7 @@ export default function StatisticsCard({
             </div>
           )}
         </div>
-        
+
         <div className={`p-3 rounded-lg ${currentColor.iconBg} ${currentColor.text}`}>
           <Icon size={24} />
         </div>

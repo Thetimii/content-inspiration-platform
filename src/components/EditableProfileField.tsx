@@ -118,7 +118,7 @@ export default function EditableProfileField({
         </div>
       ) : (
         <div className={`p-4 rounded-lg flex justify-between items-center ${isDarkMode ? 'bg-gray-800' : 'bg-gray-50'}`}>
-          <p className={type === 'select' ? 'capitalize' : ''}>
+          <p className={`${type === 'select' ? 'capitalize' : ''} ${isDarkMode ? 'text-gray-300' : 'text-black'}`}>
             {value || 'Not specified'}
             {type === 'number' && value ? ' hours/week' : ''}
           </p>
