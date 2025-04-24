@@ -88,30 +88,37 @@ export async function POST(request: Request) {
 Be specific and detailed in your analysis.`;
 
     // Make the API call to OpenRouter for video analysis
-    console.log(`Calling OpenRouter API for video ${videoId} using qwen-2.5-vl-72b-instruct model`);
+    console.log(`Calling OpenRouter API for video ${videoId} using anthropic/claude-3-5-sonnet model`);
+    console.log(`API Key length: ${sanitizedApiKey.length} characters`);
+    console.log(`Download URL: ${video.download_url}`);
+
+    // Prepare the request payload
+    const requestPayload = {
+      model: 'anthropic/claude-3-5-sonnet', // Using Claude 3.5 Sonnet which has excellent multimodal capabilities
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: prompt
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: video.download_url
+              }
+            }
+          ]
+        }
+      ]
+    };
+
+    console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
 
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'qwen/qwen-2.5-vl-72b-instruct', // Using the more powerful 72B parameter model
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: video.download_url
-                }
-              }
-            ]
-          }
-        ]
-      },
+      requestPayload,
       {
         headers: {
           'Authorization': `Bearer ${sanitizedApiKey}`,
@@ -123,9 +130,25 @@ Be specific and detailed in your analysis.`;
       }
     );
 
+    console.log('OpenRouter API response status:', response.status);
+    console.log('OpenRouter API response headers:', JSON.stringify(response.headers, null, 2));
+    console.log('OpenRouter API response data:', JSON.stringify(response.data, null, 2));
+
     // Extract the analysis from the response
     const analysis = response.data?.choices?.[0]?.message?.content || '';
     console.log(`Received analysis for video ${videoId}, length: ${analysis.length} characters`);
+
+    // Check if we actually got a meaningful analysis
+    if (!analysis || analysis.trim().length < 10) {
+      console.error(`Empty or too short analysis received for video ${videoId}`);
+      return NextResponse.json(
+        {
+          error: 'The API returned an empty or too short analysis',
+          suggestion: 'This may be due to the model being unable to process the video properly. Please try again later.'
+        },
+        { status: 500 }
+      );
+    }
 
     // Update the video in the database with the analysis
     const { data: updatedVideo, error: updateError } = await supabase
