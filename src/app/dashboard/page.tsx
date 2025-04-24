@@ -32,6 +32,7 @@ export default function Dashboard() {
   const [collapsedQueries, setCollapsedQueries] = useState<Record<string, boolean>>({}); // Track which queries are collapsed
   const [scrapingQueries, setScrapingQueries] = useState<Record<string, boolean>>({}); // Track which queries are being scraped
   const [analyzingVideos, setAnalyzingVideos] = useState<Record<string, boolean>>({}); // Track which videos are being analyzed
+  const [gettingCleanUrls, setGettingCleanUrls] = useState<Record<string, boolean>>({}); // Track which videos are getting clean URLs
   const [generatingRecommendation, setGeneratingRecommendation] = useState<boolean>(false); // Track if a recommendation is being generated
   const { theme } = useTheme();
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
@@ -391,6 +392,57 @@ export default function Dashboard() {
     }
   };
 
+  // Function to get a clean download URL for a video
+  const getCleanUrl = async (videoId: string) => {
+    try {
+      // Mark this video as getting a clean URL
+      setGettingCleanUrls(prev => ({ ...prev, [videoId]: true }));
+
+      console.log(`Getting clean URL for video ID: ${videoId}`);
+
+      const response = await fetch('/api/get-clean-url', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          videoId,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Get clean URL response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to get clean URL');
+      }
+
+      // Refresh the videos data
+      const { data: videosData } = await supabase
+        .from('tiktok_videos')
+        .select('*, trend_queries(query)')
+        .eq('id', videoId)
+        .single();
+
+      if (videosData) {
+        // Update the videos state with the updated video
+        setVideos(prev => {
+          // Replace the video with the updated one
+          return prev.map(v => v.id === videoId ? videosData : v);
+        });
+      }
+
+      // Show a success message
+      alert(`Clean URL obtained successfully: ${data.download_url}`);
+    } catch (error: any) {
+      console.error('Error getting clean URL:', error);
+      alert(`Error getting clean URL: ${error.message}`);
+    } finally {
+      // Mark this video as no longer getting a clean URL
+      setGettingCleanUrls(prev => ({ ...prev, [videoId]: false }));
+    }
+  };
+
   // Function to analyze a single video
   const analyzeVideo = async (videoId: string) => {
     try {
@@ -743,7 +795,12 @@ export default function Dashboard() {
                 {videos.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {videos.slice(0, 6).map(video => (
-                      <VideoCard key={video.id} video={video} />
+                      <VideoCard
+                        key={video.id}
+                        video={video}
+                        onGetCleanUrl={getCleanUrl}
+                        isGettingCleanUrl={gettingCleanUrls[video.id]}
+                      />
                     ))}
                   </div>
                 ) : (
@@ -967,6 +1024,8 @@ export default function Dashboard() {
                                   video={video}
                                   onAnalyze={analyzeVideo}
                                   isAnalyzing={analyzingVideos[video.id]}
+                                  onGetCleanUrl={getCleanUrl}
+                                  isGettingCleanUrl={gettingCleanUrls[video.id]}
                                 />
                               ))}
                             </div>

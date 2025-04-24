@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiHeart, FiEye, FiDownload, FiExternalLink, FiInfo, FiX, FiRefreshCw } from 'react-icons/fi';
+import { FiHeart, FiEye, FiDownload, FiExternalLink, FiInfo, FiX, FiRefreshCw, FiLink } from 'react-icons/fi';
 import { useTheme } from '@/utils/themeContext';
 
 interface VideoCardProps {
@@ -21,9 +21,11 @@ interface VideoCardProps {
   };
   onAnalyze?: (videoId: string) => void;
   isAnalyzing?: boolean;
+  onGetCleanUrl?: (videoId: string) => void;
+  isGettingCleanUrl?: boolean;
 }
 
-export default function VideoCard({ video, onAnalyze, isAnalyzing }: VideoCardProps) {
+export default function VideoCard({ video, onAnalyze, isAnalyzing, onGetCleanUrl, isGettingCleanUrl }: VideoCardProps) {
   const { theme } = useTheme();
   const [showDetails, setShowDetails] = useState(false);
 
@@ -177,29 +179,55 @@ export default function VideoCard({ video, onAnalyze, isAnalyzing }: VideoCardPr
           )}
         </div>
 
-        {onAnalyze && !video.frame_analysis && (
-          <button
-            onClick={() => onAnalyze(video.id)}
-            disabled={isAnalyzing}
-            className={`text-sm font-medium flex items-center ${
-              isAnalyzing
-                ? theme === 'dark' ? 'text-yellow-600 cursor-not-allowed' : 'text-yellow-400 cursor-not-allowed'
-                : theme === 'dark' ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-800'
-            }`}
-          >
-            {isAnalyzing ? (
-              <>
-                <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
-                Analyzing...
-              </>
-            ) : (
-              <>
-                <FiRefreshCw className="mr-1" />
-                Analyze
-              </>
-            )}
-          </button>
-        )}
+        <div className="flex space-x-2">
+          {onGetCleanUrl && (
+            <button
+              onClick={() => onGetCleanUrl(video.id)}
+              disabled={isGettingCleanUrl}
+              className={`text-sm font-medium flex items-center ${
+                isGettingCleanUrl
+                  ? theme === 'dark' ? 'text-blue-600 cursor-not-allowed' : 'text-blue-400 cursor-not-allowed'
+                  : theme === 'dark' ? 'text-blue-400 hover:text-blue-300' : 'text-blue-600 hover:text-blue-800'
+              }`}
+            >
+              {isGettingCleanUrl ? (
+                <>
+                  <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                  Getting URL...
+                </>
+              ) : (
+                <>
+                  <FiLink className="mr-1" />
+                  Get Clean URL
+                </>
+              )}
+            </button>
+          )}
+
+          {onAnalyze && !video.frame_analysis && (
+            <button
+              onClick={() => onAnalyze(video.id)}
+              disabled={isAnalyzing}
+              className={`text-sm font-medium flex items-center ${
+                isAnalyzing
+                  ? theme === 'dark' ? 'text-yellow-600 cursor-not-allowed' : 'text-yellow-400 cursor-not-allowed'
+                  : theme === 'dark' ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-800'
+              }`}
+            >
+              {isAnalyzing ? (
+                <>
+                  <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                  Analyzing...
+                </>
+              ) : (
+                <>
+                  <FiRefreshCw className="mr-1" />
+                  Analyze
+                </>
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Details modal */}
