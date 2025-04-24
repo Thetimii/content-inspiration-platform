@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     // Use download_url if available, otherwise fall back to video_url
     const urlToAnalyze = videoData.download_url || videoData.video_url;
-    
+
     if (!urlToAnalyze) {
       return NextResponse.json(
         { error: 'No URL available for this video' },
@@ -77,8 +77,9 @@ async function startAnalysisInBackground(videoId: string, videoUrl: string) {
   try {
     // Import required modules
     const axios = await import('axios');
-    
+
     console.log(`Background analysis started for video ${videoId}`);
+    console.log(`Video URL: ${videoUrl}`);
 
     // Get the OpenRouter API key
     const apiKey = process.env.OPENROUTER_API_KEY;
@@ -88,6 +89,8 @@ async function startAnalysisInBackground(videoId: string, videoUrl: string) {
 
     // Sanitize the API key
     const sanitizedApiKey = apiKey.trim();
+    console.log(`API key length: ${apiKey.length}, sanitized length: ${sanitizedApiKey.length}`);
+    console.log(`First 5 chars of sanitized key: ${sanitizedApiKey.substring(0, 5)}...`);
 
     console.log(`Making API call to OpenRouter for video ${videoId}...`);
 
@@ -133,9 +136,23 @@ Be specific and detailed in your analysis.`
     );
 
     console.log(`Received response from OpenRouter for video ${videoId}`);
+    console.log('Response status:', response.status);
+    console.log('Response headers:', JSON.stringify(response.headers));
+    console.log('Response data structure:', JSON.stringify({
+      id: response.data.id,
+      model: response.data.model,
+      choices: response.data.choices ? [{
+        index: response.data.choices[0]?.index,
+        message: {
+          role: response.data.choices[0]?.message?.role,
+          content_length: response.data.choices[0]?.message?.content?.length || 0
+        }
+      }] : 'No choices'
+    }));
 
     // Extract the analysis from the response
     const analysis = response.data.choices[0]?.message?.content || 'No analysis available';
+    console.log('Analysis preview:', analysis.substring(0, 100) + '...');
 
     console.log(`Updating database with analysis for video ${videoId}`);
 
@@ -161,7 +178,7 @@ Be specific and detailed in your analysis.`
           last_analyzed_at: new Date().toISOString()
         })
         .eq('id', videoId);
-      
+
       console.log(`Updated video ${videoId} with error message`);
     } catch (updateError) {
       console.error(`Error updating video ${videoId} with error message:`, updateError);
