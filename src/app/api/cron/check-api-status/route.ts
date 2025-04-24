@@ -4,28 +4,29 @@ import { supabase } from '@/utils/supabase';
 
 /**
  * API endpoint to check the status of various APIs
- * This is designed to be called by a cron job
+ * This is designed to be called by a cron job every 6 hours
+ * It can also be triggered manually from the API Status page
  */
 export async function GET(request: Request) {
   try {
     // Check OpenRouter API status
     await checkOpenRouterStatus();
-    
+
     // Check RapidAPI status
     await checkRapidAPIStatus();
-    
+
     // Check Brevo API status
     await checkBrevoStatus();
-    
+
     return NextResponse.json({
       status: 'success',
       message: 'API status checks completed successfully'
     });
   } catch (error: any) {
     console.error('Error checking API status:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to check API status',
         message: error.message
       },
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
 async function checkOpenRouterStatus() {
   try {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    
+
     if (!apiKey) {
       await updateApiStatus('openrouter', 'error', {
         message: 'API key is not configured',
@@ -48,10 +49,10 @@ async function checkOpenRouterStatus() {
       });
       return;
     }
-    
+
     // Sanitize the API key
     const sanitizedApiKey = apiKey.trim();
-    
+
     // Check for common issues
     const apiKeyAnalysis = {
       originalLength: apiKey.length,
@@ -62,7 +63,7 @@ async function checkOpenRouterStatus() {
       firstFiveChars: sanitizedApiKey.substring(0, 5),
       lastFiveChars: sanitizedApiKey.substring(sanitizedApiKey.length - 5)
     };
-    
+
     // If there are issues with the API key, update the status
     if (apiKeyAnalysis.hasSpaces || apiKeyAnalysis.hasNewlines || apiKeyAnalysis.hasInvalidChars) {
       await updateApiStatus('openrouter', 'error', {
@@ -72,7 +73,7 @@ async function checkOpenRouterStatus() {
       });
       return;
     }
-    
+
     // Make a test request to OpenRouter
     try {
       const response = await axios.post(
@@ -95,7 +96,7 @@ async function checkOpenRouterStatus() {
           }
         }
       );
-      
+
       // If we get here, the API key is valid
       await updateApiStatus('openrouter', 'ok', {
         message: 'API key is valid',
@@ -129,7 +130,7 @@ async function checkOpenRouterStatus() {
 async function checkRapidAPIStatus() {
   try {
     const apiKey = process.env.RAPIDAPI_KEY;
-    
+
     if (!apiKey) {
       await updateApiStatus('rapidapi', 'error', {
         message: 'API key is not configured',
@@ -137,7 +138,7 @@ async function checkRapidAPIStatus() {
       });
       return;
     }
-    
+
     // Make a test request to RapidAPI
     try {
       const response = await axios.get(
@@ -157,7 +158,7 @@ async function checkRapidAPIStatus() {
           }
         }
       );
-      
+
       // If we get here, the API key is valid
       await updateApiStatus('rapidapi', 'ok', {
         message: 'API key is valid',
@@ -188,7 +189,7 @@ async function checkRapidAPIStatus() {
 async function checkBrevoStatus() {
   try {
     const apiKey = process.env.BREVO_API_KEY;
-    
+
     if (!apiKey) {
       await updateApiStatus('brevo', 'error', {
         message: 'API key is not configured',
@@ -196,7 +197,7 @@ async function checkBrevoStatus() {
       });
       return;
     }
-    
+
     // Make a test request to Brevo
     try {
       const response = await axios.get(
@@ -208,7 +209,7 @@ async function checkBrevoStatus() {
           }
         }
       );
-      
+
       // If we get here, the API key is valid
       await updateApiStatus('brevo', 'ok', {
         message: 'API key is valid',
@@ -244,12 +245,12 @@ async function updateApiStatus(serviceName: string, status: string, details: any
       .select('id')
       .eq('service_name', serviceName)
       .single();
-    
+
     if (existingError && existingError.code !== 'PGRST116') {
       console.error(`Error checking if ${serviceName} exists:`, existingError);
       return;
     }
-    
+
     if (existingData) {
       // Update the existing record
       const { error } = await supabase
@@ -260,7 +261,7 @@ async function updateApiStatus(serviceName: string, status: string, details: any
           last_checked: new Date().toISOString()
         })
         .eq('service_name', serviceName);
-      
+
       if (error) {
         console.error(`Error updating ${serviceName} status:`, error);
       }
@@ -274,7 +275,7 @@ async function updateApiStatus(serviceName: string, status: string, details: any
           details,
           last_checked: new Date().toISOString()
         });
-      
+
       if (error) {
         console.error(`Error inserting ${serviceName} status:`, error);
       }

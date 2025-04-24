@@ -84,7 +84,18 @@ export default function ApiStatusPage() {
   };
 
   useEffect(() => {
+    // Check API status when the component mounts
+    // This will also trigger a background check that updates the database
     checkApiStatus();
+
+    // Set up an interval to check the API status every 5 minutes while the page is open
+    const intervalId = setInterval(() => {
+      console.log('Running periodic API status check...');
+      checkApiStatus();
+    }, 5 * 60 * 1000); // 5 minutes
+
+    // Clean up the interval when the component unmounts
+    return () => clearInterval(intervalId);
   }, []);
 
   return (
@@ -123,10 +134,15 @@ export default function ApiStatusPage() {
         <div className={`mb-8 p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
           <div className="flex justify-between items-center mb-4">
             <h2 className="text-xl font-semibold">API Status Dashboard</h2>
-            <div className="text-sm text-gray-500">
-              {dbApiStatus.length > 0 && dbApiStatus[0].last_checked && (
-                <span>Last checked: {new Date(dbApiStatus[0].last_checked).toLocaleString()}</span>
-              )}
+            <div className="flex items-center">
+              <div className="text-sm text-gray-500 mr-2">
+                {dbApiStatus.length > 0 && dbApiStatus[0].last_checked && (
+                  <span>Last checked: {new Date(dbApiStatus[0].last_checked).toLocaleString()}</span>
+                )}
+              </div>
+              <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
+                Auto-updates every 6 hours
+              </div>
             </div>
           </div>
 
