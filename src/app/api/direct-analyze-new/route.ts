@@ -85,8 +85,49 @@ export async function POST(request: Request) {
       console.log('RapidAPI response received');
 
       // Extract the download URL from the response
-      if (rapidApiResponse.data && rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
-        downloadUrl = rapidApiResponse.data.data.play;
+      console.log('RapidAPI response structure:', JSON.stringify(rapidApiResponse.data, null, 2));
+
+      // Try multiple possible response formats based on API documentation
+      if (rapidApiResponse.data) {
+        // Format 1: data.play
+        if (rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
+          downloadUrl = rapidApiResponse.data.data.play;
+        }
+        // Format 2: data.video
+        else if (rapidApiResponse.data.data && rapidApiResponse.data.data.video) {
+          downloadUrl = rapidApiResponse.data.data.video;
+        }
+        // Format 3: video[0]
+        else if (rapidApiResponse.data.video && Array.isArray(rapidApiResponse.data.video) && rapidApiResponse.data.video[0]) {
+          downloadUrl = rapidApiResponse.data.video[0];
+        }
+        // Format 4: video (string)
+        else if (typeof rapidApiResponse.data.video === 'string') {
+          downloadUrl = rapidApiResponse.data.video;
+        }
+        // Format 5: nowm_video_url
+        else if (rapidApiResponse.data.nowm_video_url) {
+          downloadUrl = rapidApiResponse.data.nowm_video_url;
+        }
+        // Format 6: video_no_watermark
+        else if (rapidApiResponse.data.video_no_watermark) {
+          downloadUrl = rapidApiResponse.data.video_no_watermark;
+        }
+        // Format 7: direct video URL in response
+        else if (typeof rapidApiResponse.data === 'string' && rapidApiResponse.data.includes('http')) {
+          downloadUrl = rapidApiResponse.data;
+        }
+        // Format 8: hdplay
+        else if (rapidApiResponse.data.data && rapidApiResponse.data.data.hdplay) {
+          downloadUrl = rapidApiResponse.data.data.hdplay;
+        }
+        // Format 9: wmplay
+        else if (rapidApiResponse.data.data && rapidApiResponse.data.data.wmplay) {
+          downloadUrl = rapidApiResponse.data.data.wmplay;
+        }
+      }
+
+      if (downloadUrl) {
         console.log(`Got clean download URL: ${downloadUrl}`);
 
         // Update the video record with the download URL
@@ -96,14 +137,53 @@ export async function POST(request: Request) {
           .eq('id', videoId);
       } else {
         console.error('Could not extract download URL from RapidAPI response');
-        console.error('Response:', JSON.stringify(rapidApiResponse.data, null, 2));
+        console.error('Response structure:', JSON.stringify(rapidApiResponse.data, null, 2));
 
-        // Fall back to the existing download_url or video_url
-        downloadUrl = video.download_url || video.video_url;
-        console.log(`Falling back to: ${downloadUrl}`);
+        // Try a second API endpoint as backup
+        try {
+          console.log('Trying alternative API endpoint...');
+          const backupResponse = await axios.get(
+            `https://tiktok-download-video1.p.rapidapi.com/getVideoInfo`,
+            {
+              params: {
+                video_url: video.video_url
+              },
+              headers: {
+                'X-RapidAPI-Key': rapidApiKey,
+                'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+              }
+            }
+          );
+
+          console.log('Backup API response:', JSON.stringify(backupResponse.data, null, 2));
+
+          // Try to extract URL from backup response
+          if (backupResponse.data && backupResponse.data.no_watermark_url) {
+            downloadUrl = backupResponse.data.no_watermark_url;
+            console.log(`Got clean download URL from backup API: ${downloadUrl}`);
+
+            // Update the video in the database
+            await supabase
+              .from('tiktok_videos')
+              .update({
+                download_url: downloadUrl
+              })
+              .eq('id', videoId);
+          }
+        } catch (backupError: any) {
+          console.error('Error with backup API call:', backupError);
+          console.error('Backup API error details:', backupError.message || 'Unknown error');
+        }
+
+        // If we still don't have a URL, fall back to the existing download_url or video_url
+        if (!downloadUrl) {
+          downloadUrl = video.download_url || video.video_url;
+          console.log(`Falling back to: ${downloadUrl}`);
+        }
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error getting clean download URL:', error);
+      console.error('Error details:', error.message || 'Unknown error');
       downloadUrl = video.download_url || video.video_url;
       console.log(`Error occurred, falling back to: ${downloadUrl}`);
     }
