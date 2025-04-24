@@ -8,10 +8,10 @@ export async function POST(req: Request) {
     const cookieStore = cookies();
     const supabase = createClient(cookieStore);
     const stripe = getStripeInstance();
-
+    
     // Get the user from the session
     const { data: { user } } = await supabase.auth.getUser();
-
+    
     if (!user) {
       return NextResponse.json(
         { error: 'You must be logged in to create a checkout session' },
@@ -34,7 +34,7 @@ export async function POST(req: Request) {
           customer: userData.stripe_customer_id,
           return_url: `${req.headers.get('origin') || process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard`,
         });
-
+        
         return NextResponse.json({ url: portalSession.url });
       }
     }
@@ -59,51 +59,19 @@ export async function POST(req: Request) {
         .eq('id', user.id);
     }
 
-    // Create or get a price for the subscription
-    let priceId;
-    try {
-      // Try to use the price ID from the request
-      const { priceId: requestPriceId } = await req.json();
-      if (requestPriceId && requestPriceId.startsWith('price_')) {
-        priceId = requestPriceId;
-      }
-    } catch (error) {
-      // If no price ID in request, continue with product lookup/creation
-    }
-
+    // Get the price ID from environment variables - no fallbacks
+    const priceId = process.env.NEXT_PUBLIC_PRICE_ID;
+    
     if (!priceId) {
-      // Look up existing prices for our product
-      const prices = await stripe.prices.list({
-        product: SUBSCRIPTION_PLAN.name.toLowerCase().replace(/\s+/g, '-'),
-        active: true,
-        limit: 1,
-      });
-
-      if (prices.data.length > 0) {
-        priceId = prices.data[0].id;
-      } else {
-        // Create a new product and price
-        const product = await stripe.products.create({
-          name: SUBSCRIPTION_PLAN.name,
-          description: SUBSCRIPTION_PLAN.description,
-        });
-
-        const price = await stripe.prices.create({
-          product: product.id,
-          unit_amount: SUBSCRIPTION_PLAN.price,
-          currency: SUBSCRIPTION_PLAN.currency,
-          recurring: {
-            interval: SUBSCRIPTION_PLAN.interval as 'month',
-          },
-        });
-
-        priceId = price.id;
-      }
+      console.error('Missing NEXT_PUBLIC_PRICE_ID environment variable');
+      throw new Error('Price ID is missing. Please check your environment variables.');
     }
+    
+    console.log('Using price ID:', priceId);
 
     // Create Checkout Session
     const session = await stripe.checkout.sessions.create({
-      customer: customerId,
+      customer_email: user.email, // Pass the user's email to ensure it's the same
       line_items: [
         {
           price: priceId,

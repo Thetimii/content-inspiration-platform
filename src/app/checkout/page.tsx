@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { FiArrowLeft, FiCheck, FiCreditCard } from 'react-icons/fi';
+import { FiArrowLeft, FiCheck, FiCreditCard, FiAlertCircle } from 'react-icons/fi';
 import { stripePromise } from '@/utils/stripe';
 import { supabase } from '@/utils/supabase';
 import Link from 'next/link';
