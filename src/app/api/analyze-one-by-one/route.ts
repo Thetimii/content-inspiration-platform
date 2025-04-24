@@ -31,41 +31,55 @@ export async function POST(request: Request) {
       console.error(`Error analyzing first video ${firstVideoId}:`, error);
     }
 
-    // Schedule the remaining videos to be processed in a separate request
+    // Process the remaining videos directly
     if (remainingVideoIds.length > 0) {
       try {
-        // Use fetch with no-wait to trigger the next video analysis
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/analyze-one-by-one`, {
+        // Make a direct API call to process the next video
+        console.log(`Directly calling analyze-one-by-one for the next ${remainingVideoIds.length} videos`);
+
+        const nextAnalysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-one-by-one`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId,
             videoIds: remainingVideoIds
           })
-        }).catch(e => console.error('Error triggering next video analysis:', e));
-        
-        console.log(`Scheduled analysis for ${remainingVideoIds.length} more videos`);
+        });
+
+        if (!nextAnalysisResponse.ok) {
+          const errorData = await nextAnalysisResponse.json();
+          console.error('Error from next analyze-one-by-one call:', errorData);
+        } else {
+          const nextAnalysisData = await nextAnalysisResponse.json();
+          console.log('Next analyze-one-by-one response:', nextAnalysisData);
+        }
       } catch (e) {
-        console.error('Failed to schedule next video analysis:', e);
+        console.error('Failed to call next video analysis:', e);
       }
     } else {
       // All videos have been analyzed, generate a recommendation
       try {
         console.log('All videos analyzed, generating recommendation...');
-        
-        // Use fetch with no-wait to trigger recommendation generation
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/generate-recommendation`, {
+
+        // Make a direct API call to generate recommendations
+        const recommendationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-recommendation`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId,
             videoIds
           })
-        }).catch(e => console.error('Error triggering recommendation generation:', e));
-        
-        console.log('Scheduled recommendation generation');
+        });
+
+        if (!recommendationResponse.ok) {
+          const errorData = await recommendationResponse.json();
+          console.error('Error from generate-recommendation:', errorData);
+        } else {
+          const recommendationData = await recommendationResponse.json();
+          console.log('Generate-recommendation response:', recommendationData);
+        }
       } catch (e) {
-        console.error('Failed to schedule recommendation generation:', e);
+        console.error('Failed to generate recommendation:', e);
       }
     }
 
@@ -89,6 +103,8 @@ export async function POST(request: Request) {
 // Function to analyze a single video
 async function analyzeVideo(videoId: string) {
   try {
+    console.log(`Starting analysis for video ID: ${videoId}`);
+
     // Get the video URL and download URL
     const { data: videoData, error: videoError } = await supabase
       .from('tiktok_videos')
@@ -100,14 +116,22 @@ async function analyzeVideo(videoId: string) {
       throw new Error(`Error fetching video ${videoId}: ${videoError.message}`);
     }
 
+    console.log(`Retrieved video data: ${JSON.stringify(videoData)}`);
+
     // Set a flag in the database to indicate analysis is in progress
     await supabase
       .from('tiktok_videos')
       .update({ summary: 'Analysis in progress...' })
       .eq('id', videoId);
 
+    console.log(`Updated video ${videoId} status to "Analysis in progress..."`);
+
     // Use download_url if available, otherwise fall back to video_url
     const urlToAnalyze = videoData.download_url || videoData.video_url;
+    if (!urlToAnalyze) {
+      throw new Error(`No URL available for video ${videoId}`);
+    }
+
     console.log(`Using URL for analysis: ${urlToAnalyze}`);
 
     // Prepare the prompt for the multimodal model
@@ -128,6 +152,9 @@ Be specific and detailed in your analysis.`;
 
     // Sanitize the API key - remove any whitespace or invalid characters
     const sanitizedApiKey = apiKey.trim();
+    console.log(`API key sanitized. Original length: ${apiKey.length}, sanitized length: ${sanitizedApiKey.length}`);
+
+    console.log(`Making API call to OpenRouter for video ${videoId}...`);
 
     // Make the API call to OpenRouter using the Qwen 2.5 VL model
     const response = await axios.post(
@@ -163,11 +190,32 @@ Be specific and detailed in your analysis.`;
       }
     );
 
+    console.log(`Received response from OpenRouter for video ${videoId}`);
+
+    // Log the response structure
+    console.log('Response structure:', JSON.stringify({
+      status: response.status,
+      statusText: response.statusText,
+      headers: response.headers,
+      data: {
+        id: response.data.id,
+        model: response.data.model,
+        choices: response.data.choices ? [{
+          index: response.data.choices[0]?.index,
+          message: {
+            role: response.data.choices[0]?.message?.role,
+            content_length: response.data.choices[0]?.message?.content?.length
+          }
+        }] : 'No choices'
+      }
+    }));
+
     // Extract the analysis from the response
     let analysis = response.data.choices[0]?.message?.content || 'No analysis available';
     console.log('Analysis summary:', analysis.substring(0, 100) + '...');
 
     // Update the video with the analysis results
+    console.log(`Updating video ${videoId} with analysis results...`);
     const { error: updateError } = await supabase
       .from('tiktok_videos')
       .update({
@@ -183,8 +231,14 @@ Be specific and detailed in your analysis.`;
     console.log(`Video ${videoId} analysis completed and saved successfully`);
     return true;
   } catch (error: any) {
-    console.error(`Error analyzing video ${videoId}:`, error.message);
-    
+    console.error(`Error analyzing video ${videoId}:`, error);
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : 'No response data'
+    });
+
     // Update the database with an error message
     try {
       await supabase
@@ -194,10 +248,12 @@ Be specific and detailed in your analysis.`;
           last_analyzed_at: new Date().toISOString()
         })
         .eq('id', videoId);
+
+      console.log(`Updated video ${videoId} with error message`);
     } catch (updateError) {
       console.error(`Error updating video ${videoId} with error message:`, updateError);
     }
-    
+
     throw error;
   }
 }

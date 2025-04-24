@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
     // Sanitize the API key - remove any whitespace or invalid characters
     const sanitizedApiKey = apiKey.trim();
-    
+
     // Make the API call to OpenRouter
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
@@ -107,17 +107,27 @@ export async function POST(request: Request) {
     // Trigger the next step in a separate request
     if (savedQueries.length > 0) {
       try {
-        // Use fetch with no-wait to trigger the next step
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/process-queries`, {
+        // Use a direct API call to trigger the next step
+        const queryIds = savedQueries.map(q => q.id);
+        console.log('Directly calling process-queries with query IDs:', queryIds);
+
+        // Make a direct call to the process-queries endpoint
+        const processResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-queries`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId,
-            queryIds: savedQueries.map(q => q.id)
+            queryIds
           })
-        }).catch(e => console.error('Error triggering process-queries:', e));
-        
-        console.log('Triggered process-queries endpoint');
+        });
+
+        if (!processResponse.ok) {
+          const errorData = await processResponse.json();
+          console.error('Error from process-queries:', errorData);
+        } else {
+          const processData = await processResponse.json();
+          console.log('Process-queries response:', processData);
+        }
       } catch (e) {
         console.error('Failed to trigger process-queries:', e);
       }

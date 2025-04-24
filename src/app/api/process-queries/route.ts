@@ -96,8 +96,8 @@ export async function POST(request: Request) {
       try {
         console.log(`Triggering analysis for ${videoIdsForAnalysis.length} videos...`);
 
-        // Make a non-blocking API call to trigger the analysis
-        fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/analyze-one-by-one`, {
+        // Make a direct API call to trigger the analysis
+        const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-one-by-one`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -106,11 +106,17 @@ export async function POST(request: Request) {
             userId,
             videoIds: videoIdsForAnalysis
           }),
-        }).catch(error => {
-          console.error('Error triggering analysis API:', error);
         });
-        
-        console.log('Video analysis for all videos triggered via separate API call');
+
+        if (!analysisResponse.ok) {
+          const errorData = await analysisResponse.json();
+          console.error('Error from analyze-one-by-one:', errorData);
+        } else {
+          const analysisData = await analysisResponse.json();
+          console.log('Analyze-one-by-one response:', analysisData);
+        }
+
+        console.log('Video analysis for all videos triggered directly');
       } catch (triggerError) {
         console.error('Error setting up analysis trigger:', triggerError);
       }

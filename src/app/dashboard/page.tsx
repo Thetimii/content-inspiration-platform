@@ -17,6 +17,7 @@ import StatisticsCard from '@/components/StatisticsCard';
 import SubscriptionStatus from '@/components/SubscriptionStatus';
 import ManageSubscriptionButton from '@/components/ManageSubscriptionButton';
 import SubscriptionContent from '@/components/SubscriptionContent';
+import { useToast } from '@chakra-ui/react';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -32,6 +33,7 @@ export default function Dashboard() {
   const [collapsedQueries, setCollapsedQueries] = useState<Record<string, boolean>>({}); // Track which queries are collapsed
   const { theme } = useTheme();
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
+  const toast = useToast();
 
   // Function to show update success message
   const showUpdateMessage = () => {
@@ -171,6 +173,8 @@ export default function Dashboard() {
     setGenerating(true);
 
     try {
+      console.log('Generating trends with business description:', businessDescription);
+
       // Use the simplified API endpoint that only generates queries
       const response = await fetch('/api/simple-trending', {
         method: 'POST',
@@ -184,6 +188,7 @@ export default function Dashboard() {
       });
 
       const responseData = await response.json();
+      console.log('Response from simple-trending:', responseData);
 
       if (!response.ok) {
         throw new Error(responseData.error || 'Failed to generate trending queries');
@@ -191,8 +196,16 @@ export default function Dashboard() {
 
       // Update the state with new queries
       setTrendQueries(responseData.queries || []);
+      console.log('Updated trend queries state with:', responseData.queries);
 
-      // The videos will be processed in a separate API call, so we don't update them here
+      // Show a message to the user that the process has started
+      toast({
+        title: 'Trend analysis started',
+        description: 'Your trends are being analyzed. This may take a few minutes. You can check the Videos tab for updates.',
+        status: 'success',
+        duration: 10000,
+        isClosable: true,
+      });
 
       // Refresh the data after a delay to get updated videos and recommendations
       setTimeout(async () => {
