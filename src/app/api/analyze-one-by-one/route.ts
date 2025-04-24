@@ -31,6 +31,12 @@ export async function POST(request: Request) {
       console.error(`Error analyzing first video ${firstVideoId}:`, error);
     }
 
+    // Add a delay before processing the next video to avoid rate limiting
+    if (remainingVideoIds.length > 0) {
+      console.log(`Adding a 5-second delay before processing the next video...`);
+      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+    }
+
     // Process the remaining videos directly
     if (remainingVideoIds.length > 0) {
       try {

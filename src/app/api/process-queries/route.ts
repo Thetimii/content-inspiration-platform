@@ -45,9 +45,12 @@ export async function POST(request: Request) {
     const allVideos: any[] = [];
     const videoIdsForAnalysis: string[] = [];
 
-    // Process each query
-    for (const query of queries) {
+    // Process each query with a delay between requests
+    for (let i = 0; i < queries.length; i++) {
+      const query = queries[i];
       try {
+        console.log(`Processing query ${i+1}/${queries.length}: "${query.query}"`);
+
         // Scrape videos for this query
         const videos = await scrapeTikTokVideos(query.query);
 
@@ -85,9 +88,22 @@ export async function POST(request: Request) {
             videoIdsForAnalysis.push(videoData[0].id);
           }
         }
+
+        // Add a delay between processing each query to avoid rate limiting
+        // Only add delay if there are more queries to process
+        if (i < queries.length - 1) {
+          console.log(`Adding a 5-second delay before processing the next query...`);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+        }
       } catch (scrapeError) {
         console.error(`Error scraping videos for query "${query.query}":`, scrapeError);
         // Continue with other queries even if one fails
+
+        // Still add a delay before the next query even if this one failed
+        if (i < queries.length - 1) {
+          console.log(`Adding a 5-second delay before processing the next query (after error)...`);
+          await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
+        }
       }
     }
 
