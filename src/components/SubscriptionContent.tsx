@@ -144,7 +144,7 @@ export default function SubscriptionContent() {
 
             <div className="flex flex-col items-center justify-center p-8 border border-dashed rounded-lg border-gray-300">
               <h3 className="text-lg font-medium mb-2">Subscribe to Lazy Trends Pro</h3>
-              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-6 text-center max-w-md`}>
+              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-black font-medium'} mb-6 text-center max-w-md`}>
                 Get access to all features including daily trend analysis, personalized recommendations, and more.
               </p>
               <a
@@ -159,7 +159,7 @@ export default function SubscriptionContent() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Subscription Status</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-black font-semibold'} mb-1`}>Subscription Status</p>
                 <div className="flex items-center">
                   {getStatusBadge(subscription?.subscription_status)}
                 </div>

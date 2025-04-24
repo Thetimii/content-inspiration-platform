@@ -64,8 +64,8 @@ export default function QuickActions({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3, delay: 0.2 }}
     >
-      <h3 className={`text-sm font-medium mb-3 ${
-        theme === 'dark' ? 'text-gray-300' : 'text-gray-900'
+      <h3 className={`text-sm font-semibold mb-3 ${
+        theme === 'dark' ? 'text-gray-300' : 'text-black'
       }`}>
         Quick Actions
       </h3>
@@ -96,12 +96,12 @@ export default function QuickActions({
             {action.id === 'generate' && isGenerating ? (
               <div className="relative">
                 <action.icon size={24} className={`${
-                  action.primary ? 'text-white' : theme === 'dark' ? 'text-gray-300' : 'text-gray-900'
+                  action.primary ? 'text-white' : theme === 'dark' ? 'text-gray-300' : 'text-black'
                 } animate-spin`} />
               </div>
             ) : (
               <action.icon size={24} className={`${
-                action.primary ? 'text-white' : theme === 'dark' ? 'text-gray-300' : 'text-gray-900'
+                action.primary ? 'text-white' : theme === 'dark' ? 'text-gray-300' : 'text-black'
               }`} />
             )}
             <span className="mt-2 text-sm text-center">{action.label}</span>

@@ -232,7 +232,7 @@ export default function VideoCard({ video }: VideoCardProps) {
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
                         <p className={`text-xs ${
-                          theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
+                          theme === 'dark' ? 'text-gray-400' : 'text-black font-semibold'
                         }`}>
                           Likes
                         </p>
@@ -245,7 +245,7 @@ export default function VideoCard({ video }: VideoCardProps) {
 
                       <div>
                         <p className={`text-xs ${
-                          theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
+                          theme === 'dark' ? 'text-gray-400' : 'text-black font-semibold'
                         }`}>
                           Views
                         </p>
