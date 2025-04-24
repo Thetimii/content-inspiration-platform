@@ -54,6 +54,28 @@ export async function POST(request: Request) {
       hashtags: video.hashtags,
     }));
 
+    // Get and sanitize the API key
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenRouter API key is missing');
+    }
+
+    // Sanitize the API key - remove any whitespace or invalid characters
+    const sanitizedApiKey = apiKey.trim();
+
+    // Log sanitized key info
+    console.log('Original API key length:', apiKey.length);
+    console.log('Sanitized API key length:', sanitizedApiKey.length);
+    console.log('First 5 chars of sanitized key:', sanitizedApiKey.substring(0, 5) + '...');
+
+    // Check for common issues
+    if (sanitizedApiKey.includes(' ')) {
+      console.error('API key contains spaces');
+    }
+    if (sanitizedApiKey.includes('\n') || sanitizedApiKey.includes('\r')) {
+      console.error('API key contains newlines');
+    }
+
     // Generate recommendations using OpenRouter
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
@@ -84,8 +106,8 @@ export async function POST(request: Request) {
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': 'https://lazy-trends.vercel.app',
+          'Authorization': `Bearer ${sanitizedApiKey}`,
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         }
