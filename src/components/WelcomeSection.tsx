@@ -83,7 +83,32 @@ export default function WelcomeSection({
           )}
         </div>
 
-        {/* Button removed as analysis is triggered automatically */}
+        <motion.button
+          onClick={onGenerateTrends}
+          disabled={isGenerating}
+          className={`${
+            theme === 'dark' ? 'glass-button-dark' : 'glass-button-light'
+          } px-4 py-2 rounded-lg flex items-center ${
+            isGenerating ? 'opacity-70 cursor-not-allowed' : ''
+          }`}
+          whileHover={isGenerating ? {} : { scale: 1.05 }}
+          whileTap={isGenerating ? {} : { scale: 0.95 }}
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.5 }}
+        >
+          {isGenerating ? (
+            <>
+              <div className="w-4 h-4 rounded-full border-2 border-white border-t-transparent animate-spin mr-2"></div>
+              <span>Generating...</span>
+            </>
+          ) : (
+            <>
+              <FiTrendingUp className="mr-2" />
+              <span>Generate Trends</span>
+            </>
+          )}
+        </motion.button>
       </div>
 
       {isGenerating && (

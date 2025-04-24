@@ -23,6 +23,14 @@ export default function QuickActions({
 
   const actions = [
     {
+      id: 'generate',
+      label: 'Generate Trends',
+      icon: FiTrendingUp,
+      onClick: onGenerateTrends,
+      disabled: isGenerating,
+      primary: true
+    },
+    {
       id: 'profile',
       label: 'Edit Profile',
       icon: FiUser,

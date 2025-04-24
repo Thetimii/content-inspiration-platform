@@ -112,7 +112,11 @@ export async function POST(request: Request) {
         console.log('Directly calling process-queries with query IDs:', queryIds);
 
         // Make a direct call to the process-queries endpoint
-        const processResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-queries`, {
+        // Make sure we have the correct base URL
+        const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
+        console.log(`Using base URL for process-queries: ${baseUrl}`);
+
+        const processResponse = await fetch(`${baseUrl}/api/process-queries`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -121,9 +125,19 @@ export async function POST(request: Request) {
           })
         });
 
+        console.log(`Process-queries response status: ${processResponse.status}`);
+
         if (!processResponse.ok) {
-          const errorData = await processResponse.json();
-          console.error('Error from process-queries:', errorData);
+          const errorText = await processResponse.text();
+          console.error(`Error from process-queries (status ${processResponse.status}):`, errorText);
+
+          // Try to parse as JSON if possible
+          try {
+            const errorData = JSON.parse(errorText);
+            console.error('Parsed error data:', errorData);
+          } catch (e) {
+            // Not JSON, that's fine
+          }
         } else {
           const processData = await processResponse.json();
           console.log('Process-queries response:', processData);
