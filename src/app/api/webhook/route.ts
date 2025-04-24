@@ -9,9 +9,9 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
 // Get the webhook secret from environment variables - no fallbacks
 const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
 
+// Check at startup if the webhook secret is present
 if (!webhookSecret) {
   console.error('Missing STRIPE_WEBHOOK_SECRET environment variable');
-  throw new Error('Webhook secret is missing. Please check your environment variables.');
 }
 
 export async function POST(req: Request) {
@@ -28,6 +28,15 @@ export async function POST(req: Request) {
     if (!signature) {
       console.error('No Stripe signature found in headers');
       return NextResponse.json({ error: 'No Stripe signature found' }, { status: 400 });
+    }
+
+    // Check if webhook secret is available
+    if (!webhookSecret) {
+      console.error('Missing STRIPE_WEBHOOK_SECRET environment variable');
+      return NextResponse.json(
+        { error: 'Webhook secret is missing. Please check your environment variables.' },
+        { status: 500 }
+      );
     }
 
     // Verify the event
