@@ -323,7 +323,7 @@ export async function POST(request: Request) {
         for (const videoId of videoIdsForAnalysis) {
           try {
             // Make a non-blocking API call to analyze each video
-            fetch(new URL('/api/simple-video-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
+            fetch(new URL('/api/quick-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
@@ -333,7 +333,7 @@ export async function POST(request: Request) {
               console.error(`Error analyzing video ${videoId}:`, error);
             });
 
-            console.log(`Triggered analysis for video ${videoId}`);
+            console.log(`Triggered quick analysis for video ${videoId}`);
           } catch (analysisError) {
             console.error(`Error setting up analysis for video ${videoId}:`, analysisError);
           }

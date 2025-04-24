@@ -44,7 +44,8 @@ export default function SimpleTestPage() {
     setAnalysisResult(null);
 
     try {
-      const response = await fetch('/api/simple-video-analysis', {
+      // Start the analysis process
+      const response = await fetch('/api/quick-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -55,25 +56,47 @@ export default function SimpleTestPage() {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to analyze video');
+        throw new Error(data.error || 'Failed to start video analysis');
       }
 
-      setAnalysisResult(data.analysis);
+      setAnalysisResult('Analysis started in the background. This may take up to 2 minutes. Please refresh the page in a moment to see the results.');
 
-      // Refresh the video list to show the updated summary
-      const { data: updatedVideos, error } = await supabase
-        .from('tiktok_videos')
-        .select('id, video_url, download_url, summary, caption')
-        .order('created_at', { ascending: false })
-        .limit(10);
+      // Set up a polling mechanism to check for updates
+      const pollInterval = setInterval(async () => {
+        const { data: videoData, error } = await supabase
+          .from('tiktok_videos')
+          .select('summary')
+          .eq('id', videoId)
+          .single();
 
-      if (!error) {
-        setVideos(updatedVideos || []);
-      }
+        if (!error && videoData && videoData.summary !== 'Analysis in progress...') {
+          clearInterval(pollInterval);
+
+          // Refresh the video list to show the updated summary
+          const { data: updatedVideos, error: refreshError } = await supabase
+            .from('tiktok_videos')
+            .select('id, video_url, download_url, summary, caption')
+            .order('created_at', { ascending: false })
+            .limit(10);
+
+          if (!refreshError) {
+            setVideos(updatedVideos || []);
+            setAnalyzing(false);
+            setAnalysisResult(videoData.summary);
+          }
+        }
+      }, 10000); // Check every 10 seconds
+
+      // Stop polling after 2 minutes if no result
+      setTimeout(() => {
+        clearInterval(pollInterval);
+        if (setAnalyzing) { // Check if component is still mounted
+          setAnalyzing(false);
+        }
+      }, 120000);
     } catch (error: any) {
       console.error('Error analyzing video:', error);
       setAnalysisResult(`Error: ${error.message}`);
-    } finally {
       setAnalyzing(false);
     }
   };
@@ -82,7 +105,7 @@ export default function SimpleTestPage() {
     <div className="min-h-screen bg-gray-900 text-white p-8">
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Simple Video Analysis Test</h1>
-        
+
         {loading ? (
           <div className="flex items-center justify-center h-40">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-white"></div>
@@ -94,8 +117,8 @@ export default function SimpleTestPage() {
         ) : (
           <div className="grid grid-cols-1 gap-6">
             {videos.map((video) => (
-              <div 
-                key={video.id} 
+              <div
+                key={video.id}
                 className={`bg-gray-800 rounded-lg p-6 border ${
                   selectedVideo === video.id ? 'border-indigo-500' : 'border-gray-700'
                 }`}
@@ -108,7 +131,7 @@ export default function SimpleTestPage() {
                     <p className="text-gray-400 text-sm mb-4">
                       URL Available: {video.download_url ? 'Yes' : 'No'}
                     </p>
-                    
+
                     <button
                       onClick={() => analyzeVideo(video.id)}
                       disabled={analyzing && selectedVideo === video.id}
@@ -128,7 +151,7 @@ export default function SimpleTestPage() {
                       )}
                     </button>
                   </div>
-                  
+
                   <div className="w-full md:w-2/3">
                     <h3 className="font-semibold mb-2 text-lg">Analysis Result</h3>
                     {video.summary ? (
