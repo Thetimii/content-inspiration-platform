@@ -171,8 +171,8 @@ export default function Dashboard() {
     setGenerating(true);
 
     try {
-      // Use the server API endpoint
-      const response = await fetch('/api/trending-queries', {
+      // Use the simplified API endpoint that only generates queries
+      const response = await fetch('/api/simple-trending', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -192,10 +192,7 @@ export default function Dashboard() {
       // Update the state with new queries
       setTrendQueries(responseData.queries || []);
 
-      // If videos were returned from the API, update the videos state
-      if (responseData.videos && responseData.videos.length > 0) {
-        setVideos(responseData.videos);
-      }
+      // The videos will be processed in a separate API call, so we don't update them here
 
       // Refresh the data after a delay to get updated videos and recommendations
       setTimeout(async () => {
