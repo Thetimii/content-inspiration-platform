@@ -6,8 +6,13 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
   apiVersion: '2023-10-16' as any,
 });
 
-// This is your Stripe webhook secret
-const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET || 'we_1RH6CRG4vQYDStWYJIIk27cL';
+// Get the webhook secret from environment variables - no fallbacks
+const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+if (!webhookSecret) {
+  console.error('Missing STRIPE_WEBHOOK_SECRET environment variable');
+  throw new Error('Webhook secret is missing. Please check your environment variables.');
+}
 
 export async function POST(req: Request) {
   // Log the request for debugging
