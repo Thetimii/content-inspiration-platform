@@ -5,13 +5,11 @@ import { supabase } from '@/utils/supabase';
 export async function POST(req: Request) {
   try {
     // Get the request body
-    const { userId, email } = await req.json();
+    const { email, userId } = await req.json();
 
-    console.log('Request body:', { userId, email });
-
-    if (!userId) {
+    if (!userId || !email) {
       return NextResponse.json(
-        { error: 'User ID is required' },
+        { error: 'User ID and email are required' },
         { status: 400 }
       );
     }
@@ -19,7 +17,6 @@ export async function POST(req: Request) {
     // Initialize Stripe
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
-      console.error('Stripe secret key is missing');
       return NextResponse.json(
         { error: 'Stripe secret key is missing' },
         { status: 500 }
@@ -30,10 +27,13 @@ export async function POST(req: Request) {
       apiVersion: '2025-03-31.basil' as any,
     });
 
-    // Get the user's Stripe customer ID
+    // Use the provided userId and email directly
+    const userEmail = email;
+
+    // Check if user already has a Stripe customer ID
     const { data: userData, error: userError } = await supabase
       .from('users')
-      .select('stripe_customer_id, email')
+      .select('stripe_customer_id')
       .eq('id', userId)
       .single();
 
@@ -45,24 +45,10 @@ export async function POST(req: Request) {
       );
     }
 
-    console.log('User data:', userData);
-
-    // Use the email from the request or from the database
-    const userEmail = email || userData?.email;
-
-    if (!userEmail) {
-      console.error('No email found for user');
-      return NextResponse.json(
-        { error: 'No email found for user' },
-        { status: 400 }
-      );
-    }
-
-    // If no customer ID exists, create one
+    // Create or retrieve Stripe customer
     let customerId = userData?.stripe_customer_id;
 
     if (!customerId) {
-      console.log('Creating new Stripe customer for user:', userId);
       // Create a new customer in Stripe
       const customer = await stripe.customers.create({
         email: userEmail,
@@ -72,7 +58,6 @@ export async function POST(req: Request) {
       });
 
       customerId = customer.id;
-      console.log('Created new Stripe customer:', customerId);
 
       // Update user record with Stripe customer ID
       const { error: updateError } = await supabase
