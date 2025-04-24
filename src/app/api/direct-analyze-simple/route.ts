@@ -116,7 +116,7 @@ Be specific and detailed in your analysis.`;
 
       // Prepare the request payload
       const requestPayload = {
-        model: "qwen/qwen2.5-vl-32b-instruct:free",
+        model: "qwen/qwen2.5-vl-7b-instruct:free",
         messages: [
           {
             role: "user",
@@ -141,7 +141,7 @@ Be specific and detailed in your analysis.`;
         'Content-Type': 'application/json'
       };
 
-      console.log('Making OpenRouter API call with model: qwen/qwen2.5-vl-32b-instruct:free');
+      console.log('Making OpenRouter API call with model: qwen/qwen2.5-vl-7b-instruct:free');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
 
       const openRouterResponse = await axios.post(
@@ -156,8 +156,14 @@ Be specific and detailed in your analysis.`;
       console.log('OpenRouter API response received');
       console.log('Response status:', openRouterResponse.status);
 
+      // Log the full response for debugging
+      console.log('OpenRouter response data:', JSON.stringify(openRouterResponse.data, null, 2));
+
       // Extract the analysis from the response
       const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
+
+      // Log the extracted analysis
+      console.log('Extracted analysis:', analysis ? (analysis.length > 100 ? analysis.substring(0, 100) + '...' : analysis) : 'null');
 
       if (!analysis || analysis.length < 10) {
         console.error('Empty or too short analysis received');
@@ -168,21 +174,49 @@ Be specific and detailed in your analysis.`;
       console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
 
       // Update the video with the analysis
+      console.log(`Updating video ${videoId} in database with analysis...`);
+
+      const updateData = {
+        frame_analysis: analysis,
+        summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
+        last_analyzed_at: new Date().toISOString()
+      };
+
+      console.log('Update data:', {
+        frame_analysis_length: updateData.frame_analysis.length,
+        summary_length: updateData.summary.length,
+        last_analyzed_at: updateData.last_analyzed_at
+      });
+
       const { error: updateError } = await supabase
         .from('tiktok_videos')
-        .update({
-          frame_analysis: analysis,
-          summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
-          last_analyzed_at: new Date().toISOString()
-        })
+        .update(updateData)
         .eq('id', videoId);
 
       if (updateError) {
         console.error('Error updating video with analysis:', updateError);
+        console.error('Update error details:', JSON.stringify(updateError, null, 2));
         return;
       }
 
       console.log(`Successfully updated video ${videoId} with analysis`);
+
+      // Verify the update by fetching the video again
+      const { data: updatedVideo, error: fetchError } = await supabase
+        .from('tiktok_videos')
+        .select('id, frame_analysis, last_analyzed_at')
+        .eq('id', videoId)
+        .single();
+
+      if (fetchError) {
+        console.error('Error verifying update:', fetchError);
+      } else {
+        console.log('Verified update:', {
+          id: updatedVideo.id,
+          frame_analysis_length: updatedVideo.frame_analysis ? updatedVideo.frame_analysis.length : 0,
+          last_analyzed_at: updatedVideo.last_analyzed_at
+        });
+      }
     } catch (error: any) {
       console.error('Error analyzing video with OpenRouter:', error);
       console.error('Error details:', {
