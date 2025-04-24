@@ -10,20 +10,32 @@ export default function ApiStatusPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<any>(null);
+  const [envStatus, setEnvStatus] = useState<any>(null);
 
   const checkApiStatus = async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
-      const response = await fetch('/api/test-openrouter');
-      const data = await response.json();
-      
-      if (response.ok) {
-        setApiStatus(data);
+      // Check OpenRouter API status
+      const apiResponse = await fetch('/api/test-openrouter');
+      const apiData = await apiResponse.json();
+
+      if (apiResponse.ok) {
+        setApiStatus(apiData);
       } else {
-        setError(data.error || 'Failed to check API status');
-        setApiStatus(data);
+        setError(apiData.error || 'Failed to check API status');
+        setApiStatus(apiData);
+      }
+
+      // Check environment variables
+      const envResponse = await fetch('/api/env-check');
+      const envData = await envResponse.json();
+
+      if (envResponse.ok) {
+        setEnvStatus(envData);
+      } else {
+        console.error('Failed to check environment variables:', envData);
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred while checking API status');
@@ -159,14 +171,51 @@ export default function ApiStatusPage() {
           )}
         </div>
 
+        {/* Environment Variables Status */}
+        {envStatus && (
+          <div className={`mb-8 p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
+            <h2 className="text-xl font-semibold mb-4">Environment Variables</h2>
+
+            <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'} mb-4`}>
+              <h3 className="font-medium mb-2">Environment Status</h3>
+              <div className="space-y-2">
+                <p>
+                  <span className="font-medium">Environment:</span>{' '}
+                  {envStatus.environment || 'N/A'}
+                </p>
+                <p>
+                  <span className="font-medium">Process.env Available:</span>{' '}
+                  {envStatus.hasProcessEnv ? 'Yes' : 'No'}
+                </p>
+                <p>
+                  <span className="font-medium">Next.config.ts Working:</span>{' '}
+                  {envStatus.nextConfigWorking ? 'Yes' : 'No'}
+                </p>
+              </div>
+            </div>
+
+            <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+              <h3 className="font-medium mb-2">Environment Variables</h3>
+              <div className="space-y-2">
+                {Object.entries(envStatus.environmentVariables || {}).map(([key, value]) => (
+                  <p key={key}>
+                    <span className="font-medium">{key}:</span>{' '}
+                    <span className={value === 'not set' ? 'text-red-500' : ''}>{value}</span>
+                  </p>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className={`p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
           <h2 className="text-xl font-semibold mb-4">Troubleshooting</h2>
-          
+
           <div className="space-y-4">
             <p>
               If the OpenRouter API key is invalid or not working, please check the following:
             </p>
-            
+
             <ol className="list-decimal list-inside space-y-2 ml-4">
               <li>Verify that the API key is correctly set in the Vercel environment variables.</li>
               <li>Make sure the API key has not expired or been revoked.</li>
@@ -174,7 +223,7 @@ export default function ApiStatusPage() {
               <li>Ensure that the API key has the necessary permissions to access the required models.</li>
               <li>Try regenerating a new API key from the OpenRouter dashboard.</li>
             </ol>
-            
+
             <p className="mt-4">
               For more information, visit the{' '}
               <a

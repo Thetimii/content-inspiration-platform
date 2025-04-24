@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     }
 
     const stripe = new Stripe(stripeSecretKey, {
-      apiVersion: '2025-03-31.basil' as any,
+
     });
 
     // Get the webhook secret

@@ -40,9 +40,16 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     // Update document class
     if (theme === 'dark') {
       document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
     } else {
       document.documentElement.classList.remove('dark');
+      document.documentElement.classList.add('light');
     }
+
+    // Force a repaint to ensure styles are applied
+    document.body.style.display = 'none';
+    document.body.offsetHeight; // Trigger a reflow
+    document.body.style.display = '';
   }, [theme, isClient]);
 
   // Toggle theme function
