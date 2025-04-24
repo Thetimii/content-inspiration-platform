@@ -13,11 +13,22 @@ export default function ManageSubscriptionButton({ className = '' }: ManageSubsc
   const handleManageSubscription = async () => {
     setIsLoading(true);
     try {
+      // Get the current user's email from Supabase
+      const { data: { user } } = await (await import('@/utils/supabase')).supabase.auth.getUser();
+
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
       const response = await fetch('/api/create-portal-session', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        body: JSON.stringify({
+          userId: user.id,
+          email: user.email
+        }),
       });
 
       if (!response.ok) {
