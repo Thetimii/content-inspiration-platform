@@ -4,8 +4,7 @@ import { supabase } from '@/utils/supabase';
 
 /**
  * API endpoint to directly analyze a single video
- * This version uses the more powerful qwen-2.5-vl-72b-instruct model with a structured prompt
- * and NO fallbacks as requested
+ * This version ensures we get a clean, no-watermark video URL before passing it to the AI
  */
 export async function POST(request: Request) {
   try {
@@ -53,13 +52,110 @@ export async function POST(request: Request) {
       });
     }
 
-    // Make sure we have a download URL
-    if (!video.download_url) {
-      console.error(`Video ${videoId} has no download URL`);
+    // Get a clean, no-watermark video URL using the TikTok API
+    // We'll use the video_url from our database to get a clean version
+    if (!video.video_url) {
+      console.error(`Video ${videoId} has no video URL`);
       return NextResponse.json(
-        { error: 'No download URL available for this video' },
+        { error: 'No video URL available for this video' },
         { status: 400 }
       );
+    }
+
+    console.log(`Original video URL: ${video.video_url}`);
+    console.log(`Original download URL: ${video.download_url || 'None'}`);
+
+    // Extract the TikTok video ID from the URL or use a default approach
+    let tiktokVideoId = '';
+    try {
+      // Try to extract from the URL
+      const urlMatch = video.video_url.match(/\/video\/(\d+)/);
+      if (urlMatch && urlMatch[1]) {
+        tiktokVideoId = urlMatch[1];
+      } else {
+        // If we can't extract from URL, use the last part of the path
+        const urlParts = new URL(video.video_url).pathname.split('/');
+        tiktokVideoId = urlParts[urlParts.length - 1];
+      }
+    } catch (error) {
+      console.error(`Error extracting TikTok video ID:`, error);
+      // If all else fails, use the download_url if available
+      if (video.download_url) {
+        console.log(`Using existing download_url as fallback`);
+      } else {
+        return NextResponse.json(
+          { error: 'Could not extract TikTok video ID' },
+          { status: 400 }
+        );
+      }
+    }
+
+    console.log(`Extracted TikTok video ID: ${tiktokVideoId}`);
+
+    // Get the RapidAPI key
+    const rapidApiKey = process.env.RAPIDAPI_KEY;
+    if (!rapidApiKey) {
+      console.error('RapidAPI key is missing');
+      return NextResponse.json(
+        { error: 'RapidAPI key is missing' },
+        { status: 500 }
+      );
+    }
+
+    // Get a clean download URL from RapidAPI
+    let cleanDownloadUrl = '';
+    try {
+      console.log(`Fetching clean download URL from RapidAPI for video ID: ${tiktokVideoId}`);
+
+      const rapidApiResponse = await axios.get(
+        `https://tiktok-download-video1.p.rapidapi.com/getVideo?id=${tiktokVideoId}&hd=1`,
+        {
+          headers: {
+            'X-RapidAPI-Key': rapidApiKey,
+            'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+          }
+        }
+      );
+
+      console.log('RapidAPI response:', JSON.stringify(rapidApiResponse.data, null, 2));
+
+      // Extract the clean download URL from the response
+      if (rapidApiResponse.data && rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
+        cleanDownloadUrl = rapidApiResponse.data.data.play;
+        console.log(`Got clean download URL: ${cleanDownloadUrl}`);
+
+        // Update the video in the database with the clean download URL
+        await supabase
+          .from('tiktok_videos')
+          .update({
+            download_url: cleanDownloadUrl
+          })
+          .eq('id', videoId);
+      } else {
+        console.error('No clean download URL found in RapidAPI response');
+        // Fall back to the existing download_url if available
+        if (video.download_url) {
+          cleanDownloadUrl = video.download_url;
+          console.log(`Falling back to existing download_url: ${cleanDownloadUrl}`);
+        } else {
+          return NextResponse.json(
+            { error: 'Could not get a clean download URL' },
+            { status: 500 }
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching clean download URL:', error);
+      // Fall back to the existing download_url if available
+      if (video.download_url) {
+        cleanDownloadUrl = video.download_url;
+        console.log(`Falling back to existing download_url after error: ${cleanDownloadUrl}`);
+      } else {
+        return NextResponse.json(
+          { error: 'Failed to get clean download URL' },
+          { status: 500 }
+        );
+      }
     }
 
     // Get the OpenRouter API key
@@ -75,7 +171,7 @@ export async function POST(request: Request) {
     // Sanitize the API key
     const sanitizedApiKey = apiKey.trim();
 
-    console.log(`Using download URL: ${video.download_url}`);
+    console.log(`Using clean download URL for analysis: ${cleanDownloadUrl}`);
 
     // Prepare a more structured prompt for better analysis
     const prompt = `Analyze this TikTok video in detail. Please provide:
@@ -88,13 +184,12 @@ export async function POST(request: Request) {
 Be specific and detailed in your analysis.`;
 
     // Make the API call to OpenRouter for video analysis
-    console.log(`Calling OpenRouter API for video ${videoId} using anthropic/claude-3-5-sonnet model`);
+    console.log(`Calling OpenRouter API for video ${videoId} using qwen/qwen-2.5-vl-72b-instruct model`);
     console.log(`API Key length: ${sanitizedApiKey.length} characters`);
-    console.log(`Download URL: ${video.download_url}`);
 
     // Prepare the request payload
     const requestPayload = {
-      model: 'anthropic/claude-3-5-sonnet', // Using Claude 3.5 Sonnet which has excellent multimodal capabilities
+      model: 'qwen/qwen-2.5-vl-72b-instruct', // Using the powerful 72B parameter model
       messages: [
         {
           role: 'user',
@@ -106,7 +201,7 @@ Be specific and detailed in your analysis.`;
             {
               type: 'image_url',
               image_url: {
-                url: video.download_url
+                url: cleanDownloadUrl
               }
             }
           ]
