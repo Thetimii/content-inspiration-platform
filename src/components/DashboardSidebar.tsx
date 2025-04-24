@@ -35,7 +35,6 @@ export default function DashboardSidebar({
     { id: 'subscription', label: 'Subscription', icon: FiCreditCard },
     { id: 'profile', label: 'Your Profile', icon: FiUser },
     { id: 'email', label: 'Email Settings', icon: FiMail },
-    { id: 'api-status', label: 'API Status', icon: FiSettings },
   ];
 
   return (
