@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { 
-  FiHome, FiVideo, FiStar, FiUser, FiSettings, 
+import {
+  FiHome, FiVideo, FiStar, FiUser, FiSettings,
   FiMail, FiTrendingUp, FiChevronLeft, FiChevronRight,
-  FiLogOut
+  FiLogOut, FiCreditCard
 } from 'react-icons/fi';
 import { useTheme } from '@/utils/themeContext';
 import ThemeToggle from './ThemeToggle';
@@ -18,9 +18,9 @@ interface SidebarProps {
   userEmail?: string;
 }
 
-export default function DashboardSidebar({ 
-  activeTab, 
-  setActiveTab, 
+export default function DashboardSidebar({
+  activeTab,
+  setActiveTab,
   onSignOut,
   userName,
   userEmail
@@ -32,6 +32,7 @@ export default function DashboardSidebar({
     { id: 'overview', label: 'Overview', icon: FiHome },
     { id: 'videos', label: 'Trending Videos', icon: FiVideo },
     { id: 'recommendations', label: 'Recommendations', icon: FiStar },
+    { id: 'subscription', label: 'Subscription', icon: FiCreditCard },
     { id: 'profile', label: 'Your Profile', icon: FiUser },
     { id: 'email', label: 'Email Settings', icon: FiMail },
   ];
@@ -63,12 +64,12 @@ export default function DashboardSidebar({
             </motion.div>
           )}
         </AnimatePresence>
-        
+
         <motion.button
           onClick={() => setIsCollapsed(!isCollapsed)}
           className={`p-2 rounded-full ${
-            theme === 'dark' 
-              ? 'hover:bg-gray-700 text-gray-300' 
+            theme === 'dark'
+              ? 'hover:bg-gray-700 text-gray-300'
               : 'hover:bg-indigo-100 text-indigo-600'
           }`}
           whileHover={{ scale: 1.1 }}
@@ -86,7 +87,7 @@ export default function DashboardSidebar({
           } ${theme === 'dark' ? 'text-white' : 'text-indigo-600'}`}>
             {userName ? userName.charAt(0).toUpperCase() : 'U'}
           </div>
-          
+
           <AnimatePresence mode="wait">
             {!isCollapsed && (
               <motion.div
@@ -123,7 +124,7 @@ export default function DashboardSidebar({
                 whileTap={{ scale: 0.98 }}
               >
                 <item.icon className={`${isCollapsed ? 'mx-auto' : 'mr-3'}`} size={20} />
-                
+
                 <AnimatePresence mode="wait">
                   {!isCollapsed && (
                     <motion.span
@@ -176,7 +177,7 @@ export default function DashboardSidebar({
           whileTap={{ scale: 0.98 }}
         >
           <FiLogOut className={`${isCollapsed ? 'mx-auto' : 'mr-3'}`} size={20} />
-          
+
           <AnimatePresence mode="wait">
             {!isCollapsed && (
               <motion.span

@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase } from '@/utils/supabase';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiUser, FiLogOut, FiTrendingUp, FiStar, FiVideo, FiRefreshCw, FiPlus, FiHeart, FiEye, FiClock, FiHash, FiMail, FiDownload, FiAlertCircle, FiHome } from 'react-icons/fi';
+import { FiUser, FiLogOut, FiTrendingUp, FiStar, FiVideo, FiRefreshCw, FiPlus, FiHeart, FiEye, FiClock, FiHash, FiMail, FiDownload, FiAlertCircle, FiHome, FiCreditCard } from 'react-icons/fi';
 import { useTheme } from '@/utils/themeContext';
 import EmailPreferences from '@/components/EmailPreferences';
 import EditableProfileField from '@/components/EditableProfileField';
@@ -14,6 +14,8 @@ import QuickActions from '@/components/QuickActions';
 import VideoCard from '@/components/VideoCard';
 import RecommendationCard from '@/components/RecommendationCard';
 import StatisticsCard from '@/components/StatisticsCard';
+import SubscriptionStatus from '@/components/SubscriptionStatus';
+import ManageSubscriptionButton from '@/components/ManageSubscriptionButton';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -300,6 +302,11 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
+              {/* Subscription Status */}
+              <div className="mb-8">
+                <SubscriptionStatus />
+              </div>
+
               {/* Statistics Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
                 <StatisticsCard
@@ -551,6 +558,32 @@ export default function Dashboard() {
             >
               <div className="space-y-8">
                 {user && <EmailPreferences userId={user.id} />}
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'subscription' && (
+            <motion.div
+              key="subscription"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className={`${theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'} p-6 rounded-xl mb-8`}>
+                <h2 className="text-xl font-semibold mb-6 flex items-center">
+                  <FiCreditCard className="mr-2 text-indigo-600" />
+                  Subscription Management
+                </h2>
+                <SubscriptionStatus className="mb-6" />
+
+                <div className="mt-8 border-t border-gray-200 pt-6">
+                  <h3 className="text-lg font-medium mb-4">Manage Your Subscription</h3>
+                  <p className="text-gray-500 mb-4">
+                    Update your payment method, view billing history, or cancel your subscription.
+                  </p>
+                  <ManageSubscriptionButton />
+                </div>
               </div>
             </motion.div>
           )}
