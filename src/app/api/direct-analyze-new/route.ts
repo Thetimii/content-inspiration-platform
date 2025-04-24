@@ -73,16 +73,16 @@ export async function POST(request: Request) {
 
     // Sanitize the API key
     const sanitizedApiKey = apiKey.trim();
-    
+
     console.log(`Using download URL: ${video.download_url}`);
 
     // Make the API call to OpenRouter for video analysis
     console.log(`Calling OpenRouter API for video ${videoId}`);
-    
+
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'qwen/qwen2.5-vl-32b-instruct:free',
+        model: 'meta-llama/llama-4-maverick:free',
         messages: [
           {
             role: 'system',
@@ -91,15 +91,15 @@ export async function POST(request: Request) {
           {
             role: 'user',
             content: [
-              { 
-                type: 'text', 
-                text: 'Describe exactly what you see in this TikTok video. Focus only on the actual content and visuals. What is happening in the video? What can you see? Be specific and detailed about the actual content.' 
+              {
+                type: 'text',
+                text: 'Describe exactly what you see in this TikTok video. Focus only on the actual content and visuals. What is happening in the video? What can you see? Be specific and detailed about the actual content.'
               },
-              { 
-                type: 'image_url', 
-                image_url: { 
-                  url: video.download_url 
-                } 
+              {
+                type: 'image_url',
+                image_url: {
+                  url: video.download_url
+                }
               }
             ]
           }
