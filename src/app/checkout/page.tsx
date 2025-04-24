@@ -41,11 +41,37 @@ export default function CheckoutPage() {
     checkUser();
   }, [router]);
 
-  const handleCheckout = () => {
+  const handleCheckout = async () => {
     setLoading(true);
 
-    // Direct redirect to Stripe payment link
-    window.location.href = 'https://buy.stripe.com/bIY6s09dwbpm8r6bII';
+    try {
+      // Use our API to create a checkout session
+      const response = await fetch('/api/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error?.message || 'Failed to create checkout session');
+      }
+
+      const { url } = await response.json();
+
+      // Redirect to Stripe Checkout
+      if (url) {
+        window.location.href = url;
+      } else {
+        // Fallback to direct link if no URL is returned
+        window.location.href = 'https://buy.stripe.com/bIY6s09dwbpm8r6bII';
+      }
+    } catch (error) {
+      console.error('Error creating checkout session:', error);
+      setError('Failed to create checkout session. Please try again.');
+      setLoading(false);
+    }
   };
 
   return (
@@ -64,6 +90,15 @@ export default function CheckoutPage() {
             Complete Your Subscription
           </h1>
         </div>
+
+        {error && (
+          <div className="p-4 mb-6 bg-red-900/30 border border-red-800 rounded-lg">
+            <p className="text-red-300 flex items-center">
+              <FiAlertCircle className="mr-2" />
+              {error}
+            </p>
+          </div>
+        )}
 
         <div className="bg-gray-700/50 p-6 rounded-lg border border-gray-600 mb-8">
           <h2 className="text-xl font-semibold mb-4">Pro Plan</h2>

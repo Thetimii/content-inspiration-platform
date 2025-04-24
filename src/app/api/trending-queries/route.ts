@@ -84,10 +84,13 @@ async function generateTrendingQueriesServer(businessDescription: string) {
   try {
     // Check if API key is available
     const apiKey = process.env.OPENROUTER_API_KEY;
-    if (!apiKey || apiKey === 'your-new-valid-api-key') {
-      console.warn('OpenRouter API key is missing or invalid');
-      throw new Error('API key not configured');
+    if (!apiKey) {
+      console.error('OpenRouter API key is missing');
+      throw new Error('OpenRouter API key is missing. Please add it to your environment variables.');
     }
+
+    // Log the first few characters of the API key for debugging
+    console.log('Using OpenRouter API key starting with:', apiKey.substring(0, 10) + '...');
 
     console.log('Generating trending queries for:', businessDescription);
 

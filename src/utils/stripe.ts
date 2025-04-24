@@ -12,6 +12,12 @@ export const PRODUCT_ID = 'prod_S8sIksYYQAe6tW';
 // Initialize Stripe server-side instance
 export const getStripeInstance = () => {
   const secretKey = process.env.STRIPE_SECRET_KEY || '';
+
+  if (!secretKey) {
+    console.error('Missing STRIPE_SECRET_KEY environment variable');
+    throw new Error('Stripe secret key is missing. Please check your environment variables.');
+  }
+
   return new Stripe(secretKey, {
     apiVersion: '2023-10-16',
   });
