@@ -34,17 +34,17 @@ export default function RecommendationsPage() {
   const fetchRecommendations = async (userId: string) => {
     try {
       setLoading(true);
-      
+
       const { data, error } = await supabase
         .from('recommendations')
         .select('*')
         .eq('user_id', userId)
         .order('created_at', { ascending: false });
-      
+
       if (error) {
         throw error;
       }
-      
+
       setRecommendations(data || []);
     } catch (error: any) {
       console.error('Error fetching recommendations:', error);
@@ -67,7 +67,7 @@ export default function RecommendationsPage() {
             Back to Dashboard
           </button>
         </div>
-        
+
         {/* Content */}
         {loading ? (
           <div className="flex justify-center items-center h-64">
@@ -79,7 +79,7 @@ export default function RecommendationsPage() {
           </div>
         ) : recommendations.length === 0 ? (
           <div className="bg-white shadow rounded-lg p-6 mb-8">
-            <p className="text-gray-500 text-center py-8">
+            <p className="text-gray-900 text-center py-8">
               No recommendations yet. Generate trending queries to get content recommendations.
             </p>
           </div>
@@ -96,7 +96,7 @@ export default function RecommendationsPage() {
                       {new Date(recommendation.created_at).toLocaleDateString()}
                     </span>
                   </div>
-                  
+
                   <div className="prose max-w-none">
                     <ReactMarkdown>
                       {recommendation.combined_summary}

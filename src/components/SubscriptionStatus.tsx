@@ -12,13 +12,14 @@ interface SubscriptionStatusProps {
 export default function SubscriptionStatus({ className = '' }: SubscriptionStatusProps) {
   const [status, setStatus] = useState<string | null>(null);
   const [trialEndDate, setTrialEndDate] = useState<string | null>(null);
+  const [cancelAt, setCancelAt] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchSubscriptionStatus = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (!user) {
           setLoading(false);
           return;
@@ -26,13 +27,14 @@ export default function SubscriptionStatus({ className = '' }: SubscriptionStatu
 
         const { data } = await supabase
           .from('users')
-          .select('subscription_status, trial_end_date')
+          .select('subscription_status, trial_end_date, cancel_at')
           .eq('id', user.id)
           .single();
 
         if (data) {
           setStatus(data.subscription_status);
           setTrialEndDate(data.trial_end_date);
+          setCancelAt(data.cancel_at);
         }
       } catch (error) {
         console.error('Error fetching subscription status:', error);
@@ -76,18 +78,26 @@ export default function SubscriptionStatus({ className = '' }: SubscriptionStatu
     const trialEnd = trialEndDate ? new Date(trialEndDate) : null;
     const daysLeft = trialEnd ? Math.max(0, Math.ceil((trialEnd.getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
 
+    // Check if the subscription is set to cancel
+    const isCanceling = cancelAt !== null;
+    const cancelDate = cancelAt ? new Date(cancelAt) : null;
+
     return (
-      <div className={`p-4 bg-blue-50 border border-blue-200 rounded-lg ${className}`}>
+      <div className={`p-4 ${isCanceling ? 'bg-orange-50 border border-orange-200' : 'bg-blue-50 border border-blue-200'} rounded-lg ${className}`}>
         <div className="flex items-center mb-2">
-          <FiClock className="text-blue-500 mr-2" />
-          <h3 className="font-medium text-blue-800">Trial Subscription</h3>
+          <FiClock className={`${isCanceling ? 'text-orange-500' : 'text-blue-500'} mr-2`} />
+          <h3 className={`font-medium ${isCanceling ? 'text-orange-800' : 'text-blue-800'}`}>
+            {isCanceling ? 'Trial Subscription (Canceling)' : 'Trial Subscription'}
+          </h3>
         </div>
-        <p className="text-blue-700 mb-4 text-sm">
-          {daysLeft > 0
-            ? `Your trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}.`
-            : 'Your trial is ending today.'}
+        <p className={`${isCanceling ? 'text-orange-700' : 'text-blue-700'} mb-4 text-sm`}>
+          {isCanceling
+            ? `Your subscription will end on ${cancelDate?.toLocaleDateString()}.`
+            : daysLeft > 0
+              ? `Your trial ends in ${daysLeft} day${daysLeft !== 1 ? 's' : ''}.`
+              : 'Your trial is ending today.'}
         </p>
-        <ManageSubscriptionButton className="bg-blue-600 hover:bg-blue-700" />
+        <ManageSubscriptionButton className={isCanceling ? "bg-orange-600 hover:bg-orange-700" : "bg-blue-600 hover:bg-blue-700"} />
       </div>
     );
   }

@@ -23,7 +23,7 @@ interface VideoCardProps {
 export default function VideoCard({ video }: VideoCardProps) {
   const { theme } = useTheme();
   const [showDetails, setShowDetails] = useState(false);
-  
+
   return (
     <motion.div
       className={`${
@@ -63,7 +63,7 @@ export default function VideoCard({ video }: VideoCardProps) {
             </svg>
           </div>
         )}
-        
+
         {/* Overlay with stats */}
         <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
           <div className="flex justify-between items-center text-white">
@@ -77,7 +77,7 @@ export default function VideoCard({ video }: VideoCardProps) {
                 {video.views.toLocaleString()}
               </span>
             </div>
-            
+
             <motion.button
               onClick={() => setShowDetails(true)}
               className="p-2 bg-white/20 backdrop-blur-sm rounded-full"
@@ -88,17 +88,17 @@ export default function VideoCard({ video }: VideoCardProps) {
             </motion.button>
           </div>
         </div>
-        
+
         {/* Analysis status badge */}
         <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs ${
-          video.summary 
-            ? theme === 'dark' ? 'bg-green-900/70 text-green-300' : 'bg-green-100 text-green-800' 
+          video.summary
+            ? theme === 'dark' ? 'bg-green-900/70 text-green-300' : 'bg-green-100 text-green-800'
             : theme === 'dark' ? 'bg-yellow-900/70 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
         } backdrop-blur-sm`}>
           {video.summary ? 'Analyzed' : 'Analyzing...'}
         </div>
       </div>
-      
+
       {/* Content */}
       <div className="p-4 flex-1 flex flex-col">
         <h3 className={`font-medium mb-2 line-clamp-2 ${
@@ -106,7 +106,7 @@ export default function VideoCard({ video }: VideoCardProps) {
         }`}>
           {video.caption}
         </h3>
-        
+
         {/* Hashtags */}
         {video.hashtags && video.hashtags.length > 0 && (
           <div className="mt-2 flex flex-wrap gap-1 mb-3">
@@ -129,7 +129,7 @@ export default function VideoCard({ video }: VideoCardProps) {
             )}
           </div>
         )}
-        
+
         {/* Query tag */}
         {video.trend_queries && (
           <div className={`mt-auto pt-2 text-xs ${
@@ -139,7 +139,7 @@ export default function VideoCard({ video }: VideoCardProps) {
           </div>
         )}
       </div>
-      
+
       {/* Actions */}
       <div className={`p-4 border-t ${
         theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
@@ -155,7 +155,7 @@ export default function VideoCard({ video }: VideoCardProps) {
           <FiExternalLink className="mr-1" />
           View on TikTok
         </a>
-        
+
         {video.download_url && (
           <a
             href={video.download_url}
@@ -170,7 +170,7 @@ export default function VideoCard({ video }: VideoCardProps) {
           </a>
         )}
       </div>
-      
+
       {/* Details modal */}
       <AnimatePresence>
         {showDetails && (
@@ -209,7 +209,7 @@ export default function VideoCard({ video }: VideoCardProps) {
                   <FiX />
                 </motion.button>
               </div>
-              
+
               <div className="p-6">
                 <div className="flex mb-6">
                   {video.cover_url && (
@@ -221,18 +221,18 @@ export default function VideoCard({ video }: VideoCardProps) {
                       />
                     </div>
                   )}
-                  
+
                   <div className="flex-1">
                     <h4 className={`font-medium mb-2 ${
                       theme === 'dark' ? 'text-gray-100' : 'text-gray-800'
                     }`}>
                       {video.caption}
                     </h4>
-                    
+
                     <div className="grid grid-cols-2 gap-4 mt-4">
                       <div>
                         <p className={`text-xs ${
-                          theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                          theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
                         }`}>
                           Likes
                         </p>
@@ -242,10 +242,10 @@ export default function VideoCard({ video }: VideoCardProps) {
                           {video.likes.toLocaleString()}
                         </p>
                       </div>
-                      
+
                       <div>
                         <p className={`text-xs ${
-                          theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                          theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
                         }`}>
                           Views
                         </p>
@@ -256,7 +256,7 @@ export default function VideoCard({ video }: VideoCardProps) {
                         </p>
                       </div>
                     </div>
-                    
+
                     {video.hashtags && video.hashtags.length > 0 && (
                       <div className="mt-4">
                         <p className={`text-xs mb-1 ${
@@ -280,7 +280,7 @@ export default function VideoCard({ video }: VideoCardProps) {
                     )}
                   </div>
                 </div>
-                
+
                 {video.summary ? (
                   <div>
                     <h4 className={`font-medium mb-2 ${
@@ -299,13 +299,13 @@ export default function VideoCard({ video }: VideoCardProps) {
                     theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
                   } text-center`}>
                     <p className={`text-sm ${
-                      theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
                     }`}>
                       Analysis in progress...
                     </p>
                   </div>
                 )}
-                
+
                 <div className="mt-6 flex justify-end space-x-3">
                   {video.video_url && (
                     <a
@@ -320,15 +320,15 @@ export default function VideoCard({ video }: VideoCardProps) {
                       View on TikTok
                     </a>
                   )}
-                  
+
                   {video.download_url && (
                     <a
                       href={video.download_url}
                       target="_blank"
                       rel="noopener noreferrer"
                       className={`px-4 py-2 rounded-lg flex items-center ${
-                        theme === 'dark' 
-                          ? 'bg-green-600/80 hover:bg-green-600' 
+                        theme === 'dark'
+                          ? 'bg-green-600/80 hover:bg-green-600'
                           : 'bg-green-600 hover:bg-green-700'
                       } text-white`}
                     >

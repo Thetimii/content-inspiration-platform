@@ -56,7 +56,7 @@ export default function EditableProfileField({
 
   return (
     <div>
-      <h3 className={`text-md font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-700'}`}>{label}</h3>
+      <h3 className={`text-md font-medium mb-2 ${isDarkMode ? 'text-gray-300' : 'text-gray-900'}`}>{label}</h3>
 
       {isEditing ? (
         <div className="space-y-2">

@@ -254,7 +254,7 @@ export default function Dashboard() {
       <div className={`flex min-h-screen items-center justify-center ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
         <div className="text-center">
           <div className={`animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 ${theme === 'dark' ? 'border-indigo-400' : 'border-indigo-600'} mx-auto`}></div>
-          <p className={`mt-4 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-600'}`}>Loading your dashboard...</p>
+          <p className={`mt-4 ${theme === 'dark' ? 'text-gray-300' : 'text-gray-900'}`}>Loading your dashboard...</p>
         </div>
       </div>
     );

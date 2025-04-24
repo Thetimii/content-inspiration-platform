@@ -68,6 +68,11 @@ export default function SubscriptionContent() {
         icon: FiCreditCard,
         text: 'Trial'
       },
+      canceled_at_period_end: {
+        color: theme === 'dark' ? 'bg-orange-800 text-orange-200' : 'bg-orange-100 text-orange-800',
+        icon: FiX,
+        text: 'Canceling Soon'
+      },
       past_due: {
         color: theme === 'dark' ? 'bg-yellow-800 text-yellow-200' : 'bg-yellow-100 text-yellow-800',
         icon: FiAlertCircle,
@@ -139,7 +144,7 @@ export default function SubscriptionContent() {
 
             <div className="flex flex-col items-center justify-center p-8 border border-dashed rounded-lg border-gray-300">
               <h3 className="text-lg font-medium mb-2">Subscribe to Lazy Trends Pro</h3>
-              <p className="text-gray-500 mb-6 text-center max-w-md">
+              <p className={`${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-6 text-center max-w-md`}>
                 Get access to all features including daily trend analysis, personalized recommendations, and more.
               </p>
               <a
@@ -154,7 +159,7 @@ export default function SubscriptionContent() {
           <div className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                <p className="text-sm text-gray-500 mb-1">Subscription Status</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Subscription Status</p>
                 <div className="flex items-center">
                   {getStatusBadge(subscription?.subscription_status)}
                 </div>
@@ -162,31 +167,31 @@ export default function SubscriptionContent() {
 
               {subscription?.trial_end_date && subscription?.subscription_status === 'trialing' && (
                 <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                  <p className="text-sm text-gray-500 mb-1">Trial Ends On</p>
+                  <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Trial Ends On</p>
                   <p className="font-medium">{formatDate(subscription.trial_end_date)}</p>
                 </div>
               )}
 
-              {subscription?.cancel_at && subscription?.subscription_status === 'canceled_at_period_end' && (
+              {subscription?.cancel_at && (
                 <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                  <p className="text-sm text-gray-500 mb-1">Subscription Ends On</p>
+                  <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Subscription Ends On</p>
                   <p className="font-medium">{formatDate(subscription.cancel_at)}</p>
                 </div>
               )}
 
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                <p className="text-sm text-gray-500 mb-1">Plan</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Plan</p>
                 <p className="font-medium">Lazy Trends Pro</p>
               </div>
 
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
-                <p className="text-sm text-gray-500 mb-1">Price</p>
+                <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-1`}>Price</p>
                 <p className="font-medium">$39.95/month</p>
               </div>
             </div>
 
             <div className="flex flex-col items-center border-t border-gray-200 pt-6 mt-6">
-              <p className="text-sm text-gray-500 mb-4 text-center">
+              <p className={`text-sm ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'} mb-4 text-center`}>
                 Manage your subscription, update payment method, or cancel your plan.
               </p>
               <ManageSubscriptionButton className="px-6 py-3" />
@@ -205,7 +210,7 @@ export default function SubscriptionContent() {
             </div>
             <div className="ml-3">
               <h3 className="text-lg font-medium">Daily Trend Analysis</h3>
-              <p className={`mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-500'}`}>
+              <p className={`mt-1 ${theme === 'dark' ? 'text-gray-400' : 'text-gray-900'}`}>
                 Get daily updates on the latest TikTok trends relevant to your business.
               </p>
             </div>
