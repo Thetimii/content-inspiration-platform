@@ -12,20 +12,20 @@ export async function GET(request: Request) {
     const now = new Date();
     const currentHour = now.getUTCHours();
     const currentMinute = now.getUTCMinutes();
-    
+
     console.log(`Setting up test user with current time: ${currentHour}:${currentMinute} UTC`);
-    
+
     // Get the user ID from the query parameters
     const url = new URL(request.url);
     const userId = url.searchParams.get('userId');
-    
+
     if (!userId) {
       return NextResponse.json(
         { error: 'userId parameter is required' },
         { status: 400 }
       );
     }
-    
+
     // Update the user's email preferences to match the current time
     const { data: userData, error: userUpdateError } = await supabase
       .from('users')
@@ -38,20 +38,20 @@ export async function GET(request: Request) {
       })
       .eq('id', userId)
       .select();
-    
+
     if (userUpdateError) {
       return NextResponse.json(
         { error: `Error updating user: ${userUpdateError.message}` },
         { status: 500 }
       );
     }
-    
+
     console.log(`Updated user ${userId} with email time ${currentHour}:${currentMinute} UTC`);
-    
+
     // Call the email scheduler API endpoint
-    const schedulerResponse = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/cron/email-scheduler`);
+    const schedulerResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL}/api/cron/email-scheduler`);
     const schedulerData = await schedulerResponse.json();
-    
+
     return NextResponse.json({
       message: 'Test scheduler completed',
       userUpdate: userData,

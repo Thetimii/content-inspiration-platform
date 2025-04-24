@@ -52,12 +52,12 @@ export function getRecommendationEmailTemplate(userName: string, recommendations
             ${formattedRecommendations}
 
             <div style="text-align: center; margin-top: 30px;">
-              <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}/dashboard" class="button">View Full Details in Dashboard</a>
+              <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/dashboard" class="button">View Full Details in Dashboard</a>
             </div>
           </div>
           <div class="footer">
             <p>You're receiving this email because you signed up for Lazy Trends.
-            You can manage your email preferences in your <a href="${process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3001'}/dashboard">dashboard</a>.</p>
+            You can manage your email preferences in your <a href="${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'}/dashboard">dashboard</a>.</p>
           </div>
         </div>
       </body>
