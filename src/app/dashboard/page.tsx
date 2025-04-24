@@ -399,7 +399,7 @@ export default function Dashboard() {
 
       console.log(`Analyzing video ID: ${videoId}`);
 
-      const response = await fetch('/api/direct-analyze', {
+      const response = await fetch('/api/direct-analyze-new', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -473,7 +473,7 @@ export default function Dashboard() {
 
           console.log(`Analyzing video ID: ${video.id}`);
 
-          const response = await fetch('/api/direct-analyze', {
+          const response = await fetch('/api/direct-analyze-new', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
