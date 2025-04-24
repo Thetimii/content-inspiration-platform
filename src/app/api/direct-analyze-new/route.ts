@@ -4,7 +4,8 @@ import { supabase } from '@/utils/supabase';
 
 /**
  * API endpoint to directly analyze a single video
- * This version simply passes the video URL to OpenRouter for analysis with NO fallbacks
+ * This version uses the more powerful qwen-2.5-vl-72b-instruct model with a structured prompt
+ * and NO fallbacks as requested
  */
 export async function POST(request: Request) {
   try {
@@ -76,24 +77,30 @@ export async function POST(request: Request) {
 
     console.log(`Using download URL: ${video.download_url}`);
 
+    // Prepare a more structured prompt for better analysis
+    const prompt = `Analyze this TikTok video in detail. Please provide:
+1. A comprehensive summary of what's happening in the video
+2. Key visual elements and objects present
+3. Any text or captions visible in the video
+4. The overall theme or message of the content
+5. What makes this content engaging or trending
+
+Be specific and detailed in your analysis.`;
+
     // Make the API call to OpenRouter for video analysis
-    console.log(`Calling OpenRouter API for video ${videoId}`);
+    console.log(`Calling OpenRouter API for video ${videoId} using qwen-2.5-vl-72b-instruct model`);
 
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
       {
-        model: 'meta-llama/llama-4-maverick:free',
+        model: 'qwen/qwen-2.5-vl-72b-instruct', // Using the more powerful 72B parameter model
         messages: [
-          {
-            role: 'system',
-            content: 'You are a TikTok video analysis expert. Your task is to describe EXACTLY what you see in the video. Focus ONLY on the actual content, actions, and visuals in the video. Do not make assumptions about techniques or strategies unless you can clearly see them.'
-          },
           {
             role: 'user',
             content: [
               {
                 type: 'text',
-                text: 'Describe exactly what you see in this TikTok video. Focus only on the actual content and visuals. What is happening in the video? What can you see? Be specific and detailed about the actual content.'
+                text: prompt
               },
               {
                 type: 'image_url',
@@ -112,7 +119,7 @@ export async function POST(request: Request) {
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         },
-        timeout: 60000 // 60 second timeout
+        timeout: 120000 // 120 second timeout to give more time for analysis
       }
     );
 
