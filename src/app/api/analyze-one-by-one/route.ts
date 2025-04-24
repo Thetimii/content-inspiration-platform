@@ -156,39 +156,96 @@ Be specific and detailed in your analysis.`;
 
     console.log(`Making API call to OpenRouter for video ${videoId}...`);
 
-    // Make the API call to OpenRouter using the Qwen 2.5 VL model
-    const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
-      {
-        model: 'qwen/qwen-2.5-vl-72b-instruct', // Multimodal model that can analyze images
-        messages: [
-          {
-            role: 'user',
-            content: [
-              {
-                type: 'text',
-                text: prompt
-              },
-              {
-                type: 'image_url',
-                image_url: {
-                  url: urlToAnalyze
+    // Try different models in case one fails
+    let response;
+    let modelUsed;
+
+    try {
+      console.log('Attempting to use Qwen 2.5 VL model...');
+      modelUsed = 'qwen/qwen-2.5-vl-72b-instruct';
+
+      // Make the API call to OpenRouter using the Qwen 2.5 VL model
+      response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: modelUsed, // Multimodal model that can analyze images
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'text',
+                  text: prompt
+                },
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: urlToAnalyze
+                  }
                 }
+              ]
+            }
+          ]
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${sanitizedApiKey}`,
+            'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+            'X-Title': 'Lazy Trends',
+            'Content-Type': 'application/json'
+          },
+          timeout: 120000 // 120 seconds timeout for video processing
+        }
+      );
+
+      console.log(`Successfully used ${modelUsed} model`);
+    } catch (error: any) {
+      console.error(`Error with Qwen model: ${error.message}`);
+
+      // Try Claude 3 Sonnet Vision as a fallback
+      try {
+        console.log('Falling back to Claude 3 Sonnet Vision model...');
+        modelUsed = 'anthropic/claude-3-sonnet-20240229-v1:0';
+
+        response = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: modelUsed,
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  {
+                    type: 'text',
+                    text: prompt
+                  },
+                  {
+                    type: 'image_url',
+                    image_url: {
+                      url: urlToAnalyze
+                    }
+                  }
+                ]
               }
             ]
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${sanitizedApiKey}`,
+              'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+              'X-Title': 'Lazy Trends',
+              'Content-Type': 'application/json'
+            },
+            timeout: 120000 // 120 seconds timeout for video processing
           }
-        ]
-      },
-      {
-        headers: {
-          'Authorization': `Bearer ${sanitizedApiKey}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
-          'X-Title': 'Lazy Trends',
-          'Content-Type': 'application/json'
-        },
-        timeout: 120000 // 120 seconds timeout for video processing
+        );
+
+        console.log(`Successfully used ${modelUsed} model as fallback`);
+      } catch (fallbackError: any) {
+        console.error(`Error with fallback model: ${fallbackError.message}`);
+        throw new Error(`Failed to analyze video with both models: ${error.message}, fallback error: ${fallbackError.message}`);
       }
-    );
+    }
 
     console.log(`Received response from OpenRouter for video ${videoId}`);
 

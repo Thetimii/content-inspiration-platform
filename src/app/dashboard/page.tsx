@@ -17,7 +17,6 @@ import StatisticsCard from '@/components/StatisticsCard';
 import SubscriptionStatus from '@/components/SubscriptionStatus';
 import ManageSubscriptionButton from '@/components/ManageSubscriptionButton';
 import SubscriptionContent from '@/components/SubscriptionContent';
-import { useToast } from '@chakra-ui/react';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -33,7 +32,6 @@ export default function Dashboard() {
   const [collapsedQueries, setCollapsedQueries] = useState<Record<string, boolean>>({}); // Track which queries are collapsed
   const { theme } = useTheme();
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
-  const toast = useToast();
 
   // Function to show update success message
   const showUpdateMessage = () => {
@@ -199,13 +197,8 @@ export default function Dashboard() {
       console.log('Updated trend queries state with:', responseData.queries);
 
       // Show a message to the user that the process has started
-      toast({
-        title: 'Trend analysis started',
-        description: 'Your trends are being analyzed. This may take a few minutes. You can check the Videos tab for updates.',
-        status: 'success',
-        duration: 10000,
-        isClosable: true,
-      });
+      // Use a simple alert since toast might not be available in this context
+      alert('Trend analysis started! Your trends are being analyzed. This may take a few minutes. You can check the Videos tab for updates.');
 
       // Refresh the data after a delay to get updated videos and recommendations
       setTimeout(async () => {
