@@ -16,6 +16,7 @@ import RecommendationCard from '@/components/RecommendationCard';
 import StatisticsCard from '@/components/StatisticsCard';
 import SubscriptionStatus from '@/components/SubscriptionStatus';
 import ManageSubscriptionButton from '@/components/ManageSubscriptionButton';
+import SubscriptionContent from '@/components/SubscriptionContent';
 
 export default function Dashboard() {
   const router = useRouter();
@@ -50,6 +51,19 @@ export default function Dashboard() {
       if (!data.session) {
         router.push('/auth/login');
         return;
+      }
+
+      // Check for tab parameter in URL
+      if (typeof window !== 'undefined') {
+        const urlParams = new URLSearchParams(window.location.search);
+        const tabParam = urlParams.get('tab');
+        if (tabParam && ['overview', 'videos', 'recommendations', 'subscription', 'profile', 'email'].includes(tabParam)) {
+          setActiveTab(tabParam);
+
+          // Remove the tab parameter from the URL to avoid issues with refreshing
+          const newUrl = window.location.pathname;
+          window.history.replaceState({}, document.title, newUrl);
+        }
       }
 
       setUser(data.session.user);
@@ -570,12 +584,8 @@ export default function Dashboard() {
               exit={{ opacity: 0, y: -10 }}
               transition={{ duration: 0.2 }}
             >
-              {/* Redirect to the subscription page */}
-              {typeof window !== 'undefined' && window.location.pathname !== '/dashboard/subscription' && (
-                router.push('/dashboard/subscription')
-              )}
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+              <div className="space-y-8">
+                <SubscriptionContent />
               </div>
             </motion.div>
           )}
