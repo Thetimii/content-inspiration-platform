@@ -281,7 +281,7 @@ Be specific and detailed in your analysis.`;
     try {
       console.log(`Calling OpenRouter API for video ${videoId}`);
 
-      // First, verify that the download URL is accessible
+      // Verify that the download URL is accessible
       try {
         console.log(`Verifying download URL is accessible: ${downloadUrl}`);
 
@@ -298,7 +298,7 @@ Be specific and detailed in your analysis.`;
           downloadUrl = freshVideo.download_url;
         }
 
-        // Now test the URL
+        // Test the URL
         try {
           const testResponse = await axios.head(downloadUrl, {
             timeout: 10000,
@@ -328,126 +328,30 @@ Be specific and detailed in your analysis.`;
         return;
       }
 
-      // Download the video file to Supabase storage
-      console.log(`Downloading video file from ${downloadUrl} to Supabase storage`);
-
-      let supabaseFileUrl = '';
-      let fileKey = '';
-
-      try {
-        // Download the video file
-        console.log(`Starting download of video file from: ${downloadUrl}`);
-        let videoBuffer;
-
-        try {
-          const response = await axios.get(downloadUrl, {
-            responseType: 'arraybuffer',
-            headers: {
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-            },
-            timeout: 60000 // 60 second timeout for download
-          });
-
-          videoBuffer = response.data;
-          console.log(`Video file downloaded successfully, size: ${videoBuffer.byteLength} bytes`);
-        } catch (downloadError: any) {
-          console.error(`Error downloading video file: ${downloadError.message}`);
-          console.error('Download error details:', downloadError);
-          throw new Error(`Failed to download video file: ${downloadError.message}`);
-        }
-
-        if (!videoBuffer || videoBuffer.byteLength === 0) {
-          throw new Error('Downloaded video file is empty');
-        }
-
-        // Generate a unique file name
-        fileKey = `temp-videos/${videoId}-${Date.now()}.mp4`;
-        console.log(`Generated file key: ${fileKey}`);
-
-        // Upload the file to Supabase storage
-        console.log(`Uploading ${videoBuffer.byteLength} bytes to Supabase storage...`);
-        try {
-          const { error: uploadError } = await supabase.storage
-            .from('tiktok-videos')
-            .upload(fileKey, videoBuffer, {
-              contentType: 'video/mp4',
-              cacheControl: '3600'
-            });
-
-          if (uploadError) {
-            console.error(`Error uploading to Supabase storage: ${uploadError.message}`);
-            console.error('Upload error details:', uploadError);
-            throw new Error(`Error uploading to Supabase storage: ${uploadError.message}`);
-          }
-
-          console.log(`Video file uploaded successfully to Supabase storage: ${fileKey}`);
-        } catch (uploadError: any) {
-          console.error(`Error during Supabase upload: ${uploadError.message}`);
-          console.error('Upload error stack:', uploadError.stack);
-          throw new Error(`Failed to upload to Supabase: ${uploadError.message}`);
-        }
-
-        // Get the public URL for the file
-        console.log(`Getting public URL for file: ${fileKey}`);
-        try {
-          const { data: publicUrlData } = supabase.storage
-            .from('tiktok-videos')
-            .getPublicUrl(fileKey);
-
-          if (!publicUrlData || !publicUrlData.publicUrl) {
-            throw new Error('Failed to get public URL from Supabase');
-          }
-
-          supabaseFileUrl = publicUrlData.publicUrl;
-          console.log(`Public URL for video file: ${supabaseFileUrl}`);
-
-          // Verify the public URL is accessible
-          try {
-            console.log(`Verifying public URL is accessible: ${supabaseFileUrl}`);
-            const urlCheckResponse = await axios.head(supabaseFileUrl, {
-              timeout: 10000,
-              headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-              }
-            });
-            console.log(`Public URL is accessible, status: ${urlCheckResponse.status}`);
-          } catch (urlCheckError: any) {
-            console.warn(`Warning: Could not verify public URL accessibility: ${urlCheckError.message}`);
-            console.warn('Will attempt to continue anyway');
-          }
-        } catch (publicUrlError: any) {
-          console.error(`Error getting public URL: ${publicUrlError.message}`);
-          throw new Error(`Failed to get public URL: ${publicUrlError.message}`);
-        }
-
-        // Now proceed with the OpenRouter API call using the Supabase file URL
-        console.log(`Sending request to OpenRouter API with model: anthropic/claude-3-sonnet-20240229`);
-        console.log(`Using Supabase file URL: ${supabaseFileUrl}`);
+      // Now proceed with the OpenRouter API call using the direct TikTok URL
+      console.log(`Sending request to OpenRouter API with model: meta-llama/llama-3-70b-vision-instruct:free`);
+      console.log(`Using direct TikTok URL: ${downloadUrl}`);
 
         // Prepare the request payload
-        // Try with Claude 3 Opus Vision model instead of Qwen
-        // Let's try a different approach - use Claude 3 Sonnet instead of Opus
-        // It's more reliable for video analysis
-        console.log('Preparing request payload for Claude 3 Sonnet');
+        // Use the free Llama 3 Vision model
+        console.log('Preparing request payload for Llama 3 Vision');
 
         const requestPayload = {
-          model: 'anthropic/claude-3-sonnet-20240229',
+          model: "meta-llama/llama-3-70b-vision-instruct:free",
           messages: [
             {
-              role: 'user',
+              role: "user",
               content: [
-                { type: 'text', text: prompt },
+                { type: "text", text: prompt },
                 {
-                  type: 'image_url',
+                  type: "image_url",
                   image_url: {
-                    url: supabaseFileUrl,
-                    detail: 'high'
+                    url: downloadUrl
                   }
                 }
               ]
             }
-          ],
-          max_tokens: 4000
+          ]
         };
 
         // Prepare the headers
@@ -521,51 +425,21 @@ Be specific and detailed in your analysis.`;
         }
 
         console.log(`Successfully updated video ${videoId} with analysis`);
+      } catch (error: any) {
+        console.error('Error analyzing video with OpenRouter:', error);
+        console.error('Error details:', {
+          message: error.message || 'Unknown error',
+          status: error.response?.status,
+          data: error.response?.data
+        });
 
-        // Delete the temporary file from Supabase storage
-        console.log(`Deleting temporary file from Supabase storage: ${fileKey}`);
-        const { error: deleteError } = await supabase.storage
-          .from('tiktok-videos')
-          .remove([fileKey]);
-
-        if (deleteError) {
-          console.error(`Error deleting temporary file: ${deleteError.message}`);
-        } else {
-          console.log(`Successfully deleted temporary file: ${fileKey}`);
-        }
-      } catch (fileError: any) {
-        console.error('Error processing video file:', fileError);
-        console.error('Error details:', fileError.message || 'Unknown error');
-        await updateVideoWithError(videoId, `Error processing video file: ${fileError.message || 'Unknown error'}`);
-
-        // Try to delete the file if it was uploaded
-        if (fileKey) {
-          try {
-            await supabase.storage
-              .from('tiktok-videos')
-              .remove([fileKey]);
-            console.log(`Cleaned up temporary file after error: ${fileKey}`);
-          } catch (cleanupError) {
-            console.error('Error cleaning up temporary file:', cleanupError);
-          }
-        }
+        await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
       }
-
     } catch (error: any) {
-      console.error('Error analyzing video with OpenRouter:', error);
-      console.error('Error details:', {
-        message: error.message || 'Unknown error',
-        status: error.response?.status,
-        data: error.response?.data
-      });
-
-      await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
+      console.error('Unexpected error in background analysis:', error);
+      await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
     }
-  } catch (error: any) {
-    console.error('Unexpected error in background analysis:', error);
-    await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
   }
-}
 
 /**
  * Update a video with an error message
