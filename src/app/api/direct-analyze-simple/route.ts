@@ -116,7 +116,7 @@ Be specific and detailed in your analysis.`;
 
       // Prepare the request payload
       const requestPayload = {
-        model: "meta-llama/llama-3-8b-vision:free",
+        model: "qwen/qwen2.5-vl-32b-instruct:free",
         messages: [
           {
             role: "user",
@@ -141,7 +141,7 @@ Be specific and detailed in your analysis.`;
         'Content-Type': 'application/json'
       };
 
-      console.log('Making OpenRouter API call with model: meta-llama/llama-3-8b-vision:free');
+      console.log('Making OpenRouter API call with model: qwen/qwen2.5-vl-32b-instruct:free');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
 
       const openRouterResponse = await axios.post(
