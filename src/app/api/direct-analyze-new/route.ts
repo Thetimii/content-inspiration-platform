@@ -336,58 +336,118 @@ Be specific and detailed in your analysis.`;
 
       try {
         // Download the video file
-        const response = await axios.get(downloadUrl, {
-          responseType: 'arraybuffer',
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
-          },
-          timeout: 30000 // 30 second timeout for download
-        });
+        console.log(`Starting download of video file from: ${downloadUrl}`);
+        let videoBuffer;
 
-        console.log(`Video file downloaded, size: ${response.data.byteLength} bytes`);
+        try {
+          const response = await axios.get(downloadUrl, {
+            responseType: 'arraybuffer',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+            },
+            timeout: 60000 // 60 second timeout for download
+          });
+
+          videoBuffer = response.data;
+          console.log(`Video file downloaded successfully, size: ${videoBuffer.byteLength} bytes`);
+        } catch (downloadError: any) {
+          console.error(`Error downloading video file: ${downloadError.message}`);
+          console.error('Download error details:', downloadError);
+          throw new Error(`Failed to download video file: ${downloadError.message}`);
+        }
+
+        if (!videoBuffer || videoBuffer.byteLength === 0) {
+          throw new Error('Downloaded video file is empty');
+        }
 
         // Generate a unique file name
         fileKey = `temp-videos/${videoId}-${Date.now()}.mp4`;
+        console.log(`Generated file key: ${fileKey}`);
 
         // Upload the file to Supabase storage
-        const { error: uploadError } = await supabase.storage
-          .from('tiktok-videos')
-          .upload(fileKey, response.data, {
-            contentType: 'video/mp4',
-            cacheControl: '3600'
-          });
+        console.log(`Uploading ${videoBuffer.byteLength} bytes to Supabase storage...`);
+        try {
+          const { error: uploadError } = await supabase.storage
+            .from('tiktok-videos')
+            .upload(fileKey, videoBuffer, {
+              contentType: 'video/mp4',
+              cacheControl: '3600'
+            });
 
-        if (uploadError) {
-          throw new Error(`Error uploading to Supabase storage: ${uploadError.message}`);
+          if (uploadError) {
+            console.error(`Error uploading to Supabase storage: ${uploadError.message}`);
+            console.error('Upload error details:', uploadError);
+            throw new Error(`Error uploading to Supabase storage: ${uploadError.message}`);
+          }
+
+          console.log(`Video file uploaded successfully to Supabase storage: ${fileKey}`);
+        } catch (uploadError: any) {
+          console.error(`Error during Supabase upload: ${uploadError.message}`);
+          console.error('Upload error stack:', uploadError.stack);
+          throw new Error(`Failed to upload to Supabase: ${uploadError.message}`);
         }
 
-        console.log(`Video file uploaded to Supabase storage: ${fileKey}`);
-
         // Get the public URL for the file
-        const { data: publicUrlData } = supabase.storage
-          .from('tiktok-videos')
-          .getPublicUrl(fileKey);
+        console.log(`Getting public URL for file: ${fileKey}`);
+        try {
+          const { data: publicUrlData } = supabase.storage
+            .from('tiktok-videos')
+            .getPublicUrl(fileKey);
 
-        supabaseFileUrl = publicUrlData.publicUrl;
-        console.log(`Public URL for video file: ${supabaseFileUrl}`);
+          if (!publicUrlData || !publicUrlData.publicUrl) {
+            throw new Error('Failed to get public URL from Supabase');
+          }
+
+          supabaseFileUrl = publicUrlData.publicUrl;
+          console.log(`Public URL for video file: ${supabaseFileUrl}`);
+
+          // Verify the public URL is accessible
+          try {
+            console.log(`Verifying public URL is accessible: ${supabaseFileUrl}`);
+            const urlCheckResponse = await axios.head(supabaseFileUrl, {
+              timeout: 10000,
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+              }
+            });
+            console.log(`Public URL is accessible, status: ${urlCheckResponse.status}`);
+          } catch (urlCheckError: any) {
+            console.warn(`Warning: Could not verify public URL accessibility: ${urlCheckError.message}`);
+            console.warn('Will attempt to continue anyway');
+          }
+        } catch (publicUrlError: any) {
+          console.error(`Error getting public URL: ${publicUrlError.message}`);
+          throw new Error(`Failed to get public URL: ${publicUrlError.message}`);
+        }
 
         // Now proceed with the OpenRouter API call using the Supabase file URL
-        console.log(`Sending request to OpenRouter API with model: anthropic/claude-3-opus-20240229`);
+        console.log(`Sending request to OpenRouter API with model: anthropic/claude-3-sonnet-20240229`);
         console.log(`Using Supabase file URL: ${supabaseFileUrl}`);
 
         // Prepare the request payload
         // Try with Claude 3 Opus Vision model instead of Qwen
+        // Let's try a different approach - use Claude 3 Sonnet instead of Opus
+        // It's more reliable for video analysis
+        console.log('Preparing request payload for Claude 3 Sonnet');
+
         const requestPayload = {
-          model: 'anthropic/claude-3-opus-20240229',
+          model: 'anthropic/claude-3-sonnet-20240229',
           messages: [
             {
               role: 'user',
               content: [
                 { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: supabaseFileUrl } }
+                {
+                  type: 'image_url',
+                  image_url: {
+                    url: supabaseFileUrl,
+                    detail: 'high'
+                  }
+                }
               ]
             }
-          ]
+          ],
+          max_tokens: 4000
         };
 
         // Prepare the headers
