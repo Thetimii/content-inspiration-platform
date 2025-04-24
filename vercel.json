@@ -1,3 +1,9 @@
 {
-  "buildCommand": "npm run build:vercel"
+  "buildCommand": "npm run build:vercel",
+  "crons": [
+    {
+      "path": "/api/cron/check-api-status",
+      "schedule": "0 */6 * * *"
+    }
+  ]
 }

@@ -11,34 +11,73 @@ export default function ApiStatusPage() {
   const [error, setError] = useState<string | null>(null);
   const [apiStatus, setApiStatus] = useState<any>(null);
   const [envStatus, setEnvStatus] = useState<any>(null);
+  const [dbApiStatus, setDbApiStatus] = useState<any[]>([]);
 
   const checkApiStatus = async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // Check OpenRouter API status
-      const apiResponse = await fetch('/api/test-openrouter');
-      const apiData = await apiResponse.json();
+      // Get API status from the database and run a live check
+      const statusResponse = await fetch('/api/get-api-status');
+      const statusData = await statusResponse.json();
 
-      if (apiResponse.ok) {
-        setApiStatus(apiData);
+      if (statusResponse.ok) {
+        setDbApiStatus(statusData.apiStatus || []);
+        setEnvStatus({
+          environment: statusData.environment,
+          hasProcessEnv: statusData.hasProcessEnv,
+          nextConfigWorking: statusData.nextConfigWorking,
+          environmentVariables: statusData.environmentVariables,
+          apiKeyAnalysis: statusData.apiKeyAnalysis
+        });
+
+        // Also trigger a background check to update the database
+        fetch('/api/cron/check-api-status').catch(err => {
+          console.error('Error triggering background check:', err);
+        });
+
+        // For backward compatibility, also run the direct OpenRouter check
+        const apiResponse = await fetch('/api/test-openrouter');
+        const apiData = await apiResponse.json();
+
+        if (apiResponse.ok) {
+          setApiStatus(apiData);
+        } else {
+          setApiStatus(apiData);
+        }
       } else {
-        setError(apiData.error || 'Failed to check API status');
-        setApiStatus(apiData);
-      }
+        setError(statusData.error || 'Failed to check API status');
 
-      // Check environment variables
-      const envResponse = await fetch('/api/env-check');
-      const envData = await envResponse.json();
+        // Fallback to direct checks
+        const apiResponse = await fetch('/api/test-openrouter');
+        const apiData = await apiResponse.json();
 
-      if (envResponse.ok) {
-        setEnvStatus(envData);
-      } else {
-        console.error('Failed to check environment variables:', envData);
+        if (apiResponse.ok) {
+          setApiStatus(apiData);
+        } else {
+          setError(apiData.error || 'Failed to check API status');
+          setApiStatus(apiData);
+        }
+
+        const envResponse = await fetch('/api/env-check');
+        const envData = await envResponse.json();
+
+        if (envResponse.ok) {
+          setEnvStatus(envData);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'An error occurred while checking API status');
+
+      // Try to get at least some data
+      try {
+        const apiResponse = await fetch('/api/test-openrouter');
+        const apiData = await apiResponse.json();
+        setApiStatus(apiData);
+      } catch (e) {
+        console.error('Error in fallback API check:', e);
+      }
     } finally {
       setLoading(false);
     }
@@ -80,8 +119,138 @@ export default function ApiStatusPage() {
           </div>
         )}
 
+        {/* Database API Status */}
         <div className={`mb-8 p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
-          <h2 className="text-xl font-semibold mb-4">OpenRouter API Status</h2>
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold">API Status Dashboard</h2>
+            <div className="text-sm text-gray-500">
+              {dbApiStatus.length > 0 && dbApiStatus[0].last_checked && (
+                <span>Last checked: {new Date(dbApiStatus[0].last_checked).toLocaleString()}</span>
+              )}
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="flex justify-center items-center p-8">
+              <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500"></div>
+            </div>
+          ) : dbApiStatus.length > 0 ? (
+            <div className="space-y-6">
+              {/* OpenRouter Status */}
+              {dbApiStatus.find(s => s.service_name === 'openrouter') && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className={`p-4 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} border-b border-gray-200`}>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-medium">OpenRouter API</h3>
+                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        dbApiStatus.find(s => s.service_name === 'openrouter')?.status === 'ok'
+                          ? theme === 'dark' ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'
+                          : theme === 'dark' ? 'bg-red-800 text-red-200' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {dbApiStatus.find(s => s.service_name === 'openrouter')?.status === 'ok' ? 'Working' : 'Error'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <div className="space-y-4">
+                      <p>
+                        <span className="font-medium">Status:</span>{' '}
+                        {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.message || 'Unknown'}
+                      </p>
+                      {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis && (
+                        <div className="space-y-2">
+                          <p className="font-medium">API Key Analysis:</p>
+                          <div className="ml-4 space-y-1">
+                            <p>
+                              <span className="font-medium">Original Length:</span>{' '}
+                              {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.originalLength} characters
+                            </p>
+                            <p>
+                              <span className="font-medium">Sanitized Length:</span>{' '}
+                              {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.sanitizedLength} characters
+                            </p>
+                            <p>
+                              <span className="font-medium">Contains Spaces:</span>{' '}
+                              <span className={dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasSpaces ? 'text-red-500' : 'text-green-500'}>
+                                {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasSpaces ? 'Yes (Problem)' : 'No'}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="font-medium">Contains Newlines:</span>{' '}
+                              <span className={dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasNewlines ? 'text-red-500' : 'text-green-500'}>
+                                {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasNewlines ? 'Yes (Problem)' : 'No'}
+                              </span>
+                            </p>
+                            <p>
+                              <span className="font-medium">Contains Invalid Characters:</span>{' '}
+                              <span className={dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasInvalidChars ? 'text-red-500' : 'text-green-500'}>
+                                {dbApiStatus.find(s => s.service_name === 'openrouter')?.details?.analysis?.hasInvalidChars ? 'Yes (Problem)' : 'No'}
+                              </span>
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* RapidAPI Status */}
+              {dbApiStatus.find(s => s.service_name === 'rapidapi') && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className={`p-4 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} border-b border-gray-200`}>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-medium">RapidAPI (TikTok)</h3>
+                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        dbApiStatus.find(s => s.service_name === 'rapidapi')?.status === 'ok'
+                          ? theme === 'dark' ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'
+                          : theme === 'dark' ? 'bg-red-800 text-red-200' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {dbApiStatus.find(s => s.service_name === 'rapidapi')?.status === 'ok' ? 'Working' : 'Error'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <p>
+                      <span className="font-medium">Status:</span>{' '}
+                      {dbApiStatus.find(s => s.service_name === 'rapidapi')?.details?.message || 'Unknown'}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Brevo Status */}
+              {dbApiStatus.find(s => s.service_name === 'brevo') && (
+                <div className="border border-gray-200 rounded-lg overflow-hidden">
+                  <div className={`p-4 ${theme === 'dark' ? 'bg-gray-700' : 'bg-gray-50'} border-b border-gray-200`}>
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-lg font-medium">Brevo Email</h3>
+                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                        dbApiStatus.find(s => s.service_name === 'brevo')?.status === 'ok'
+                          ? theme === 'dark' ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800'
+                          : theme === 'dark' ? 'bg-red-800 text-red-200' : 'bg-red-100 text-red-800'
+                      }`}>
+                        {dbApiStatus.find(s => s.service_name === 'brevo')?.status === 'ok' ? 'Working' : 'Error'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="p-4">
+                    <p>
+                      <span className="font-medium">Status:</span>{' '}
+                      {dbApiStatus.find(s => s.service_name === 'brevo')?.details?.message || 'Unknown'}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="text-center p-4">No API status information available.</p>
+          )}
+        </div>
+
+        {/* Live OpenRouter API Status */}
+        <div className={`mb-8 p-6 rounded-lg ${theme === 'dark' ? 'bg-gray-800' : 'bg-white'} shadow-md`}>
+          <h2 className="text-xl font-semibold mb-4">Live OpenRouter API Check</h2>
 
           {loading ? (
             <div className="flex justify-center items-center p-8">
