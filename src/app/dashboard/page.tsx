@@ -57,7 +57,7 @@ export default function Dashboard() {
       if (typeof window !== 'undefined') {
         const urlParams = new URLSearchParams(window.location.search);
         const tabParam = urlParams.get('tab');
-        if (tabParam && ['overview', 'videos', 'recommendations', 'subscription', 'profile', 'email'].includes(tabParam)) {
+        if (tabParam && ['overview', 'videos', 'recommendations', 'subscription', 'profile', 'email', 'api-status'].includes(tabParam)) {
           setActiveTab(tabParam);
 
           // Remove the tab parameter from the URL to avoid issues with refreshing
@@ -586,6 +586,24 @@ export default function Dashboard() {
             >
               <div className="space-y-8">
                 <SubscriptionContent />
+              </div>
+            </motion.div>
+          )}
+
+          {activeTab === 'api-status' && (
+            <motion.div
+              key="api-status"
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -10 }}
+              transition={{ duration: 0.2 }}
+            >
+              <div className="space-y-8">
+                <iframe
+                  src="/dashboard/api-status"
+                  className="w-full h-[800px] border-0 rounded-xl shadow-sm"
+                  title="API Status"
+                />
               </div>
             </motion.div>
           )}

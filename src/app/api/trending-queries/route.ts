@@ -90,7 +90,12 @@ async function generateTrendingQueriesServer(businessDescription: string) {
     }
 
     // Log the first few characters of the API key for debugging
-    console.log('Using OpenRouter API key starting with:', apiKey.substring(0, 10) + '...');
+    console.log('Using OpenRouter API key starting with:', apiKey.substring(0, 5) + '...');
+
+    // Log environment information for debugging
+    console.log('Environment variables check:');
+    console.log('- NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL || 'not set');
+    console.log('- NODE_ENV:', process.env.NODE_ENV || 'not set');
 
     console.log('Generating trending queries for:', businessDescription);
 
@@ -163,19 +168,30 @@ async function generateTrendingQueriesServer(businessDescription: string) {
 
     // Check for authentication errors
     if (error.response?.status === 401 || error.message === 'API key not configured') {
-      throw new Error('OpenRouter API key is invalid or missing. Please update your API key in the .env.local file.');
+      console.error('Authentication error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        apiKeyLength: process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_API_KEY.length : 0
+      });
+      throw new Error('OpenRouter API key is invalid or missing. Please check the API key in Vercel environment variables.');
     }
 
     // Check if it's an OpenRouter API key issue
     if (error.response?.status === 401 || error.response?.status === 403 ||
         error.message.includes('API key') || error.message.includes('Cannot read properties')) {
-      console.error('OpenRouter API key issue detected');
-      throw new Error('The OpenRouter API key is invalid or has reached its rate limit. Please update your API key in the .env.local file.');
+      console.error('OpenRouter API key issue detected:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        message: error.message,
+        apiKeyLength: process.env.OPENROUTER_API_KEY ? process.env.OPENROUTER_API_KEY.length : 0
+      });
+      throw new Error('The OpenRouter API key is invalid or has reached its rate limit. Please check the API key in Vercel environment variables.');
     }
 
     // No fallbacks - throw the error to be handled by the caller
-    console.error('API error occurred and no fallbacks are allowed');
-    throw new Error('Failed to generate trending queries. Please try again.');
+    console.error('API error occurred and no fallbacks are allowed:', error);
+    throw new Error('Failed to generate trending queries. Please try again later or contact support if the issue persists.');
   }
 }
 
@@ -545,8 +561,30 @@ export async function POST(request: Request) {
     });
   } catch (error: any) {
     console.error('Error in trending-queries API route:', error);
+
+    // Log additional debugging information
+    console.error('Error details:', {
+      message: error.message,
+      stack: error.stack,
+      responseStatus: error.response?.status,
+      responseData: error.response?.data ? JSON.stringify(error.response.data).substring(0, 200) : 'No response data'
+    });
+
+    // Check if it's an API key issue
+    const errorMessage = error.message || 'An error occurred';
+    const isApiKeyIssue = errorMessage.includes('API key') ||
+                          errorMessage.includes('invalid') ||
+                          errorMessage.includes('missing') ||
+                          (error.response?.status === 401);
+
     return NextResponse.json(
-      { error: error.message || 'An error occurred' },
+      {
+        error: errorMessage,
+        isApiKeyIssue: isApiKeyIssue,
+        suggestion: isApiKeyIssue ?
+          'Please check that the OpenRouter API key is correctly configured in Vercel environment variables.' :
+          'Please try again later or contact support if the issue persists.'
+      },
       { status: 500 }
     );
   }
