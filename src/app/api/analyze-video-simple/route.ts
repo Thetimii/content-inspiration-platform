@@ -24,6 +24,17 @@ Be specific and detailed in your analysis.`;
 
     console.log('Sending request to OpenRouter multimodal model...');
 
+    // Get and sanitize the API key
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      throw new Error('OpenRouter API key is missing');
+    }
+
+    // Sanitize the API key - remove any whitespace or invalid characters
+    const sanitizedApiKey = apiKey.trim();
+    console.log(`API key length: ${apiKey.length}, sanitized length: ${sanitizedApiKey.length}`);
+    console.log(`First 5 chars of sanitized key: ${sanitizedApiKey.substring(0, 5)}...`);
+
     // Make the API call to OpenRouter using the free Qwen 2.5 VL model
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
@@ -49,7 +60,7 @@ Be specific and detailed in your analysis.`;
       },
       {
         headers: {
-          'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+          'Authorization': `Bearer ${sanitizedApiKey}`,
           'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
@@ -121,7 +132,7 @@ export async function POST(request: Request) {
 
     // Use download_url if available, otherwise fall back to video_url
     const urlToAnalyze = videoData.download_url || videoData.video_url;
-    
+
     if (!urlToAnalyze) {
       console.error('No URL found for video:', videoId);
       return NextResponse.json(
