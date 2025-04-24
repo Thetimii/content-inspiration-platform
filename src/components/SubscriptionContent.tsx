@@ -17,7 +17,7 @@ export default function SubscriptionContent() {
     const fetchSubscription = async () => {
       try {
         const { data: { user } } = await supabase.auth.getUser();
-        
+
         if (!user) {
           setLoading(false);
           return;
@@ -25,7 +25,7 @@ export default function SubscriptionContent() {
 
         const { data, error } = await supabase
           .from('users')
-          .select('subscription_status, trial_end_date, stripe_subscription_id, stripe_customer_id')
+          .select('subscription_status, trial_end_date, stripe_subscription_id, stripe_customer_id, cancel_at')
           .eq('id', user.id)
           .single();
 
@@ -56,7 +56,7 @@ export default function SubscriptionContent() {
 
   const getStatusBadge = (status: string | null) => {
     if (!status) return null;
-    
+
     const statusConfig: Record<string, { color: string, icon: any, text: string }> = {
       active: {
         color: theme === 'dark' ? 'bg-green-800 text-green-200' : 'bg-green-100 text-green-800',
@@ -77,6 +77,11 @@ export default function SubscriptionContent() {
         color: theme === 'dark' ? 'bg-red-800 text-red-200' : 'bg-red-100 text-red-800',
         icon: FiX,
         text: 'Canceled'
+      },
+      canceled_at_period_end: {
+        color: theme === 'dark' ? 'bg-orange-800 text-orange-200' : 'bg-orange-100 text-orange-800',
+        icon: FiX,
+        text: 'Canceling Soon'
       },
       incomplete: {
         color: theme === 'dark' ? 'bg-gray-800 text-gray-200' : 'bg-gray-100 text-gray-800',
@@ -122,7 +127,7 @@ export default function SubscriptionContent() {
 
       <div className={`p-6 rounded-lg ${theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'} shadow-md`}>
         <h2 className="text-xl font-semibold mb-4">Subscription Details</h2>
-        
+
         {!subscription?.subscription_status || subscription?.subscription_status === 'canceled' ? (
           <div className="space-y-6">
             <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg text-yellow-700">
@@ -131,7 +136,7 @@ export default function SubscriptionContent() {
                 You don't have an active subscription.
               </p>
             </div>
-            
+
             <div className="flex flex-col items-center justify-center p-8 border border-dashed rounded-lg border-gray-300">
               <h3 className="text-lg font-medium mb-2">Subscribe to Lazy Trends Pro</h3>
               <p className="text-gray-500 mb-6 text-center max-w-md">
@@ -154,25 +159,32 @@ export default function SubscriptionContent() {
                   {getStatusBadge(subscription?.subscription_status)}
                 </div>
               </div>
-              
+
               {subscription?.trial_end_date && subscription?.subscription_status === 'trialing' && (
                 <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
                   <p className="text-sm text-gray-500 mb-1">Trial Ends On</p>
                   <p className="font-medium">{formatDate(subscription.trial_end_date)}</p>
                 </div>
               )}
-              
+
+              {subscription?.cancel_at && subscription?.subscription_status === 'canceled_at_period_end' && (
+                <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
+                  <p className="text-sm text-gray-500 mb-1">Subscription Ends On</p>
+                  <p className="font-medium">{formatDate(subscription.cancel_at)}</p>
+                </div>
+              )}
+
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
                 <p className="text-sm text-gray-500 mb-1">Plan</p>
                 <p className="font-medium">Lazy Trends Pro</p>
               </div>
-              
+
               <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
                 <p className="text-sm text-gray-500 mb-1">Price</p>
                 <p className="font-medium">$39.95/month</p>
               </div>
             </div>
-            
+
             <div className="flex flex-col items-center border-t border-gray-200 pt-6 mt-6">
               <p className="text-sm text-gray-500 mb-4 text-center">
                 Manage your subscription, update payment method, or cancel your plan.
@@ -185,7 +197,7 @@ export default function SubscriptionContent() {
 
       <div className={`p-6 rounded-lg ${theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'} shadow-md`}>
         <h2 className="text-xl font-semibold mb-4">Subscription Benefits</h2>
-        
+
         <div className="space-y-4">
           <div className="flex items-start">
             <div className={`flex-shrink-0 h-5 w-5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
@@ -198,7 +210,7 @@ export default function SubscriptionContent() {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-start">
             <div className={`flex-shrink-0 h-5 w-5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
               <FiCheck className="h-5 w-5" />
@@ -210,7 +222,7 @@ export default function SubscriptionContent() {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-start">
             <div className={`flex-shrink-0 h-5 w-5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
               <FiCheck className="h-5 w-5" />
@@ -222,7 +234,7 @@ export default function SubscriptionContent() {
               </p>
             </div>
           </div>
-          
+
           <div className="flex items-start">
             <div className={`flex-shrink-0 h-5 w-5 ${theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}`}>
               <FiCheck className="h-5 w-5" />

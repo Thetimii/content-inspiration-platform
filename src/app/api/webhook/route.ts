@@ -75,7 +75,38 @@ export async function POST(req: Request) {
         userId = userData.id;
       }
 
-      // Update subscription status in the database
+      // Handle subscription cancellation
+      if (event.type === 'customer.subscription.updated') {
+        // Check if the subscription was canceled
+        const previousAttributes = event.data.previous_attributes as any;
+
+        if (
+          subscription.cancel_at_period_end === true &&
+          previousAttributes?.cancel_at_period_end === false
+        ) {
+          console.log(`Subscription ${subscription.id} has been set to cancel at period end`);
+
+          // Update the database to reflect the cancellation
+          const { error: updateError } = await supabase
+            .from('users')
+            .update({
+              stripe_subscription_id: subscription.id,
+              subscription_status: 'canceled_at_period_end',
+              cancel_at: subscription.cancel_at ? new Date(subscription.cancel_at * 1000).toISOString() : null
+            })
+            .eq('id', userId);
+
+          if (updateError) {
+            console.error('Error updating user subscription cancellation:', updateError);
+            return NextResponse.json({ received: true, warning: 'Failed to update user subscription cancellation' });
+          }
+
+          console.log(`Updated subscription status for user ${userId} to canceled_at_period_end`);
+          return NextResponse.json({ received: true });
+        }
+      }
+
+      // Update subscription status in the database for other subscription events
       const { error: updateError } = await supabase
         .from('users')
         .update({
