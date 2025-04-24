@@ -9,10 +9,18 @@ if (!supabaseUrl || !supabaseAnonKey) {
   console.error('Missing Supabase environment variables');
 }
 
-// Create Supabase client
+// Create Supabase client with proper headers
 export const supabase = createClient(
   supabaseUrl || '',
-  supabaseAnonKey || ''
+  supabaseAnonKey || '',
+  {
+    global: {
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'X-Content-Type-Options': 'nosniff'
+      },
+    },
+  }
 );
 
 export type Database = {

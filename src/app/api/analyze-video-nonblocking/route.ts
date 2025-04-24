@@ -33,7 +33,7 @@ export async function POST(request: Request) {
 
     // Use download_url if available, otherwise fall back to video_url
     const urlToAnalyze = videoData.download_url || videoData.video_url;
-    
+
     if (!urlToAnalyze) {
       console.error('No URL found for video:', videoId);
       return NextResponse.json(
@@ -78,7 +78,7 @@ async function startAnalysisInBackground(videoId: string, videoUrl: string) {
   try {
     // Import required modules
     const axios = await import('axios');
-    
+
     console.log(`Background analysis started for video ${videoId}`);
     console.log(`Video URL: ${videoUrl}`);
 
@@ -131,7 +131,7 @@ Be specific and detailed in your analysis.`;
       {
         headers: {
           'Authorization': `Bearer ${sanitizedApiKey}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+          'HTTP-Referer': 'https://www.lazy-trends.com',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         },
@@ -187,7 +187,7 @@ Be specific and detailed in your analysis.`;
           last_analyzed_at: new Date().toISOString()
         })
         .eq('id', videoId);
-      
+
       console.log(`Updated video ${videoId} with error message`);
     } catch (updateError) {
       console.error(`Error updating video ${videoId} with error message:`, updateError);

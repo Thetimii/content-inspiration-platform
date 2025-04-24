@@ -61,7 +61,7 @@ Be specific and detailed in your analysis.`;
       {
         headers: {
           'Authorization': `Bearer ${sanitizedApiKey}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
+          'HTTP-Referer': 'https://www.lazy-trends.com',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         },

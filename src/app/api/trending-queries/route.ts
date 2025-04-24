@@ -323,7 +323,7 @@ export async function POST(request: Request) {
         for (const videoId of videoIdsForAnalysis) {
           try {
             // Make a non-blocking API call to analyze each video using the non-blocking approach
-            fetch(new URL('/api/analyze-video-nonblocking', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
+            fetch(new URL('/api/analyze-video-nonblocking', 'https://www.lazy-trends.com'), {
               method: 'POST',
               headers: {
                 'Content-Type': 'application/json',
