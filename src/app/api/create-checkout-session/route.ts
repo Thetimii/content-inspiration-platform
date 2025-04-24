@@ -4,6 +4,9 @@ import { supabase } from '@/utils/supabase';
 
 export async function POST(req: Request) {
   try {
+    // Get the request body
+    const { email } = await req.json();
+
     // Initialize Stripe
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
     if (!stripeSecretKey) {
@@ -27,7 +30,7 @@ export async function POST(req: Request) {
     }
 
     const userId = sessionData.session.user.id;
-    const userEmail = sessionData.session.user.email;
+    const userEmail = email || sessionData.session.user.email;
 
     if (!userId || !userEmail) {
       return NextResponse.json(
@@ -53,7 +56,7 @@ export async function POST(req: Request) {
 
     // Create or retrieve Stripe customer
     let customerId = userData?.stripe_customer_id;
-    
+
     if (!customerId) {
       // Create a new customer in Stripe
       const customer = await stripe.customers.create({
@@ -62,15 +65,15 @@ export async function POST(req: Request) {
           userId: userId
         }
       });
-      
+
       customerId = customer.id;
-      
+
       // Update user record with Stripe customer ID
       const { error: updateError } = await supabase
         .from('users')
         .update({ stripe_customer_id: customerId })
         .eq('id', userId);
-      
+
       if (updateError) {
         console.error('Error updating user with Stripe customer ID:', updateError);
         // Continue anyway as the checkout can still work
