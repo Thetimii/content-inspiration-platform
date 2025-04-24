@@ -372,33 +372,67 @@ Be specific and detailed in your analysis.`;
         console.log(`Public URL for video file: ${supabaseFileUrl}`);
 
         // Now proceed with the OpenRouter API call using the Supabase file URL
-        console.log(`Sending request to OpenRouter API with model: qwen/qwen-2.5-vl-72b-instruct`);
-        const openRouterResponse = await axios.post(
-          'https://openrouter.ai/api/v1/chat/completions',
-          {
-            model: 'qwen/qwen-2.5-vl-72b-instruct',
-            messages: [
-              {
-                role: 'user',
-                content: [
-                  { type: 'text', text: prompt },
-                  { type: 'image_url', image_url: { url: supabaseFileUrl } }
-                ]
-              }
-            ]
-          },
-          {
-            headers: {
-              'Authorization': `Bearer ${openRouterApiKey.trim()}`,
-              'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
-              'X-Title': 'Lazy Trends',
-              'Content-Type': 'application/json'
-            },
-            timeout: 120000 // 2 minute timeout
-          }
-        );
+        console.log(`Sending request to OpenRouter API with model: anthropic/claude-3-opus-20240229`);
+        console.log(`Using Supabase file URL: ${supabaseFileUrl}`);
 
-        console.log('OpenRouter API response received');
+        // Prepare the request payload
+        // Try with Claude 3 Opus Vision model instead of Qwen
+        const requestPayload = {
+          model: 'anthropic/claude-3-opus-20240229',
+          messages: [
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: supabaseFileUrl } }
+              ]
+            }
+          ]
+        };
+
+        // Prepare the headers
+        const headers = {
+          'Authorization': `Bearer ${openRouterApiKey.trim()}`,
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
+          'X-Title': 'Lazy Trends',
+          'Content-Type': 'application/json'
+        };
+
+        console.log('OpenRouter request payload:', JSON.stringify(requestPayload, null, 2));
+        console.log('OpenRouter request headers:', JSON.stringify(headers, null, 2));
+
+        // Variable to store the response
+        let openRouterResponse;
+
+        try {
+          console.log('Making OpenRouter API call...');
+          openRouterResponse = await axios.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            requestPayload,
+            {
+              headers,
+              timeout: 120000 // 2 minute timeout
+            }
+          );
+
+          console.log('OpenRouter API call successful!');
+          console.log('Response status:', openRouterResponse.status);
+          console.log('Response headers:', JSON.stringify(openRouterResponse.headers, null, 2));
+          console.log('Response data:', JSON.stringify(openRouterResponse.data, null, 2));
+          console.log('OpenRouter API response received');
+        } catch (openRouterError: any) {
+          console.error('Error calling OpenRouter API:', openRouterError);
+          console.error('Error details:', {
+            message: openRouterError.message || 'Unknown error',
+            status: openRouterError.response?.status,
+            data: openRouterError.response?.data
+          });
+          throw openRouterError;
+        }
+
+        if (!openRouterResponse || !openRouterResponse.data) {
+          throw new Error('No response received from OpenRouter API');
+        }
 
         // Extract the analysis from the response
         const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
