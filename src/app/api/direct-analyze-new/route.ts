@@ -107,9 +107,15 @@ export async function POST(request: Request) {
     try {
       console.log(`Fetching clean download URL from RapidAPI for video ID: ${tiktokVideoId}`);
 
+      // Use the exact endpoint and format from the example
+      console.log(`Using video URL for RapidAPI: ${video.video_url}`);
       const rapidApiResponse = await axios.get(
-        `https://tiktok-download-video1.p.rapidapi.com/getVideo?id=${tiktokVideoId}&hd=1`,
+        `https://tiktok-download-video1.p.rapidapi.com/getVideo`,
         {
+          params: {
+            url: video.video_url,
+            hd: '1'
+          },
           headers: {
             'X-RapidAPI-Key': rapidApiKey,
             'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
@@ -119,9 +125,39 @@ export async function POST(request: Request) {
 
       console.log('RapidAPI response:', JSON.stringify(rapidApiResponse.data, null, 2));
 
-      // Extract the clean download URL from the response
-      if (rapidApiResponse.data && rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
-        cleanDownloadUrl = rapidApiResponse.data.data.play;
+      // Try multiple possible response formats based on API documentation
+      if (rapidApiResponse.data) {
+        // Format 1: data.play
+        if (rapidApiResponse.data.data && rapidApiResponse.data.data.play) {
+          cleanDownloadUrl = rapidApiResponse.data.data.play;
+        }
+        // Format 2: data.video
+        else if (rapidApiResponse.data.data && rapidApiResponse.data.data.video) {
+          cleanDownloadUrl = rapidApiResponse.data.data.video;
+        }
+        // Format 3: video[0]
+        else if (rapidApiResponse.data.video && rapidApiResponse.data.video[0]) {
+          cleanDownloadUrl = rapidApiResponse.data.video[0];
+        }
+        // Format 4: video (string)
+        else if (typeof rapidApiResponse.data.video === 'string') {
+          cleanDownloadUrl = rapidApiResponse.data.video;
+        }
+        // Format 5: nowm_video_url
+        else if (rapidApiResponse.data.nowm_video_url) {
+          cleanDownloadUrl = rapidApiResponse.data.nowm_video_url;
+        }
+        // Format 6: video_no_watermark
+        else if (rapidApiResponse.data.video_no_watermark) {
+          cleanDownloadUrl = rapidApiResponse.data.video_no_watermark;
+        }
+        // Format 7: direct video URL in response
+        else if (typeof rapidApiResponse.data === 'string' && rapidApiResponse.data.includes('http')) {
+          cleanDownloadUrl = rapidApiResponse.data;
+        }
+      }
+
+      if (cleanDownloadUrl) {
         console.log(`Got clean download URL: ${cleanDownloadUrl}`);
 
         // Update the video in the database with the clean download URL
@@ -133,11 +169,48 @@ export async function POST(request: Request) {
           .eq('id', videoId);
       } else {
         console.error('No clean download URL found in RapidAPI response');
-        // Fall back to the existing download_url if available
-        if (video.download_url) {
+        console.error('RapidAPI response structure:', JSON.stringify(rapidApiResponse.data, null, 2));
+
+        // Try a second API endpoint as backup
+        try {
+          console.log('Trying alternative API endpoint...');
+          const backupResponse = await axios.get(
+            `https://tiktok-download-video1.p.rapidapi.com/getVideoInfo`,
+            {
+              params: {
+                video_url: video.video_url
+              },
+              headers: {
+                'X-RapidAPI-Key': rapidApiKey,
+                'X-RapidAPI-Host': 'tiktok-download-video1.p.rapidapi.com'
+              }
+            }
+          );
+
+          console.log('Backup API response:', JSON.stringify(backupResponse.data, null, 2));
+
+          // Try to extract URL from backup response
+          if (backupResponse.data && backupResponse.data.no_watermark_url) {
+            cleanDownloadUrl = backupResponse.data.no_watermark_url;
+            console.log(`Got clean download URL from backup API: ${cleanDownloadUrl}`);
+
+            // Update the video in the database
+            await supabase
+              .from('tiktok_videos')
+              .update({
+                download_url: cleanDownloadUrl
+              })
+              .eq('id', videoId);
+          }
+        } catch (backupError) {
+          console.error('Error with backup API call:', backupError);
+        }
+
+        // If we still don't have a URL, fall back to the existing download_url if available
+        if (!cleanDownloadUrl && video.download_url) {
           cleanDownloadUrl = video.download_url;
           console.log(`Falling back to existing download_url: ${cleanDownloadUrl}`);
-        } else {
+        } else if (!cleanDownloadUrl) {
           return NextResponse.json(
             { error: 'Could not get a clean download URL' },
             { status: 500 }
