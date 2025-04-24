@@ -45,7 +45,7 @@ export async function POST(request: Request) {
 
     // Scrape videos for this query
     console.log(`Scraping TikTok videos for query: "${query.query}"`);
-    
+
     // Make sure we have a RapidAPI key
     const rapidApiKey = process.env.RAPIDAPI_KEY;
     if (!rapidApiKey) {
@@ -93,6 +93,22 @@ export async function POST(request: Request) {
       console.log(`Saving ${videosToSave.length} videos for query: ${query.query}`);
 
       for (const item of videosToSave) {
+        // Log the raw video data to help debug
+        console.log(`Raw video data for query "${query.query}":`, {
+          title: item.title,
+          play: item.play,
+          wmplay: item.wmplay,
+          download: item.download,
+          cover: item.cover,
+          origin_cover: item.origin_cover
+        });
+
+        // Prioritize the download URL - this is the most important field for analysis
+        const downloadUrl = item.download || item.wmplay || item.play || '';
+
+        // Log the selected download URL
+        console.log(`Selected download URL: ${downloadUrl}`);
+
         const mappedVideo = {
           video_url: item.play || item.wmplay || '',
           caption: item.title || '',
@@ -101,12 +117,18 @@ export async function POST(request: Request) {
           downloads: parseInt(item.download_count || '0', 10),
           hashtags: item.title ? item.title.match(/#[\w]+/g) || [] : [],
           cover_url: item.cover || item.origin_cover || '',
-          download_url: item.download || item.wmplay || item.play || '',
+          download_url: downloadUrl,
         };
 
         // Skip videos with missing required data
-        if (!mappedVideo.video_url) {
-          console.warn('Skipping video with missing URL');
+        if (!mappedVideo.video_url || !mappedVideo.download_url) {
+          console.warn('Skipping video with missing URL or download URL');
+          continue;
+        }
+
+        // Validate the download URL
+        if (!mappedVideo.download_url.startsWith('http')) {
+          console.warn('Skipping video with invalid download URL format');
           continue;
         }
 
@@ -148,7 +170,7 @@ export async function POST(request: Request) {
           // Make a direct API call to trigger the analysis
           const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
           console.log(`Using base URL for analyze-one-by-one: ${baseUrl}`);
-          
+
           const analysisResponse = await fetch(`${baseUrl}/api/analyze-one-by-one`, {
             method: 'POST',
             headers: {
@@ -161,7 +183,7 @@ export async function POST(request: Request) {
           });
 
           console.log(`Analysis response status: ${analysisResponse.status}`);
-          
+
           if (!analysisResponse.ok) {
             const errorText = await analysisResponse.text();
             console.error(`Error from analyze-one-by-one (status ${analysisResponse.status}):`, errorText);

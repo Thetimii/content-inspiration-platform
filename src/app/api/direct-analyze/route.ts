@@ -53,17 +53,93 @@ export async function POST(request: Request) {
       });
     }
 
-    // Generate a simple analysis based on the video metadata
-    // This is a fallback approach to avoid timeouts with the OpenRouter API
-    const simpleAnalysis = generateSimpleAnalysis(video);
-    console.log(`Generated simple analysis for video ${videoId}, length: ${simpleAnalysis.length} characters`);
+    // Make sure we have a download URL
+    if (!video.download_url) {
+      console.error(`Video ${videoId} has no download URL`);
+      return NextResponse.json(
+        { error: 'No download URL available for this video' },
+        { status: 400 }
+      );
+    }
+
+    // Get the OpenRouter API key
+    const apiKey = process.env.OPENROUTER_API_KEY;
+    if (!apiKey) {
+      console.error('OpenRouter API key is missing');
+      return NextResponse.json(
+        { error: 'OpenRouter API key is missing' },
+        { status: 500 }
+      );
+    }
+
+    // Sanitize the API key
+    const sanitizedApiKey = apiKey.trim();
+
+    let analysis = '';
+
+    try {
+      // First try to use the OpenRouter API for video analysis
+      console.log(`Calling OpenRouter API for video ${videoId} with URL: ${video.download_url}`);
+
+      // Set a timeout for the OpenRouter API call
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+
+      const response = await axios.post(
+        'https://openrouter.ai/api/v1/chat/completions',
+        {
+          model: 'qwen/qwen2.5-vl-32b-instruct:free',
+          messages: [
+            {
+              role: 'system',
+              content: 'You are a TikTok video analysis expert. Analyze the video and provide detailed insights about its content, style, and techniques used.'
+            },
+            {
+              role: 'user',
+              content: [
+                { type: 'text', text: 'Analyze this TikTok video in detail. Describe what you see, the content, style, and any techniques used.' },
+                { type: 'image_url', image_url: { url: video.download_url } }
+              ]
+            }
+          ]
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${sanitizedApiKey}`,
+            'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
+            'X-Title': 'Lazy Trends',
+            'Content-Type': 'application/json'
+          },
+          signal: controller.signal
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      // Extract the analysis from the response
+      analysis = response.data?.choices?.[0]?.message?.content || '';
+      console.log(`Received analysis from OpenRouter for video ${videoId}, length: ${analysis.length} characters`);
+
+      // Check if the analysis is meaningful
+      if (analysis.length < 100 ||
+          analysis.includes("I don't see any video") ||
+          analysis.includes("Please provide") ||
+          analysis.includes("I'd be happy to analyze")) {
+        throw new Error('Received inadequate analysis from OpenRouter');
+      }
+    } catch (error) {
+      // If OpenRouter API fails, fall back to generating a simple analysis
+      console.log(`OpenRouter API failed for video ${videoId}, falling back to simple analysis. Error: ${error.message}`);
+      analysis = generateSimpleAnalysis(video);
+      console.log(`Generated simple analysis for video ${videoId}, length: ${analysis.length} characters`);
+    }
 
     // Update the video in the database with the analysis
     const { data: updatedVideo, error: updateError } = await supabase
       .from('tiktok_videos')
       .update({
-        frame_analysis: simpleAnalysis,
-        summary: simpleAnalysis.substring(0, 500) + '...',
+        frame_analysis: analysis,
+        summary: analysis.substring(0, 500) + '...',
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId)
@@ -83,7 +159,7 @@ export async function POST(request: Request) {
       success: true,
       message: 'Video analyzed successfully',
       video: updatedVideo[0],
-      analysis: simpleAnalysis
+      analysis
     });
   } catch (error: any) {
     console.error('Error in direct-analyze API route:', error);
