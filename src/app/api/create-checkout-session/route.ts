@@ -5,7 +5,14 @@ import { supabase } from '@/utils/supabase';
 export async function POST(req: Request) {
   try {
     // Get the request body
-    const { email } = await req.json();
+    const { email, userId } = await req.json();
+
+    if (!userId || !email) {
+      return NextResponse.json(
+        { error: 'User ID and email are required' },
+        { status: 400 }
+      );
+    }
 
     // Initialize Stripe
     const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
@@ -20,17 +27,8 @@ export async function POST(req: Request) {
       apiVersion: '2025-03-31.basil' as any,
     });
 
-    // Get the current authenticated user
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
-      return NextResponse.json(
-        { error: 'User not authenticated' },
-        { status: 401 }
-      );
-    }
-
-    const userId = sessionData.session.user.id;
-    const userEmail = email || sessionData.session.user.email;
+    // Use the provided userId and email directly
+    const userEmail = email;
 
     if (!userId || !userEmail) {
       return NextResponse.json(

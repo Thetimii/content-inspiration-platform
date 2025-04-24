@@ -46,6 +46,10 @@ export default function CheckoutPage() {
     setError(null);
 
     try {
+      if (!user || !user.id || !user.email) {
+        throw new Error('User information is missing. Please log in again.');
+      }
+
       console.log('Creating checkout session...');
       // Use our API to create a checkout session
       const response = await fetch('/api/create-checkout-session', {
@@ -54,7 +58,8 @@ export default function CheckoutPage() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          email: user?.email
+          email: user.email,
+          userId: user.id
         }),
       });
 
