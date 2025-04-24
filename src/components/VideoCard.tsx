@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { FiHeart, FiEye, FiDownload, FiExternalLink, FiInfo, FiX } from 'react-icons/fi';
+import { FiHeart, FiEye, FiDownload, FiExternalLink, FiInfo, FiX, FiRefreshCw } from 'react-icons/fi';
 import { useTheme } from '@/utils/themeContext';
 
 interface VideoCardProps {
@@ -15,12 +15,15 @@ interface VideoCardProps {
     video_url?: string;
     download_url?: string;
     summary?: string;
+    frame_analysis?: string;
     hashtags?: string[];
     trend_queries?: { query: string };
   };
+  onAnalyze?: (videoId: string) => void;
+  isAnalyzing?: boolean;
 }
 
-export default function VideoCard({ video }: VideoCardProps) {
+export default function VideoCard({ video, onAnalyze, isAnalyzing }: VideoCardProps) {
   const { theme } = useTheme();
   const [showDetails, setShowDetails] = useState(false);
 
@@ -91,11 +94,13 @@ export default function VideoCard({ video }: VideoCardProps) {
 
         {/* Analysis status badge */}
         <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs ${
-          video.summary
+          video.frame_analysis
             ? theme === 'dark' ? 'bg-green-900/70 text-green-300' : 'bg-green-100 text-green-800'
-            : theme === 'dark' ? 'bg-yellow-900/70 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
+            : isAnalyzing
+              ? theme === 'dark' ? 'bg-yellow-900/70 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
+              : theme === 'dark' ? 'bg-gray-900/70 text-gray-300' : 'bg-gray-100 text-gray-800'
         } backdrop-blur-sm`}>
-          {video.summary ? 'Analyzed' : 'Analyzing...'}
+          {video.frame_analysis ? 'Analyzed' : isAnalyzing ? 'Analyzing...' : 'Not Analyzed'}
         </div>
       </div>
 
@@ -144,30 +149,56 @@ export default function VideoCard({ video }: VideoCardProps) {
       <div className={`p-4 border-t ${
         theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
       } flex justify-between`}>
-        <a
-          href={video.video_url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className={`text-sm font-medium flex items-center ${
-            theme === 'dark' ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'
-          }`}
-        >
-          <FiExternalLink className="mr-1" />
-          View on TikTok
-        </a>
-
-        {video.download_url && (
+        <div className="flex space-x-3">
           <a
-            href={video.download_url}
+            href={video.video_url}
             target="_blank"
             rel="noopener noreferrer"
             className={`text-sm font-medium flex items-center ${
-              theme === 'dark' ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-800'
+              theme === 'dark' ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'
             }`}
           >
-            <FiDownload className="mr-1" />
-            Download
+            <FiExternalLink className="mr-1" />
+            View on TikTok
           </a>
+
+          {video.download_url && (
+            <a
+              href={video.download_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`text-sm font-medium flex items-center ${
+                theme === 'dark' ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-800'
+              }`}
+            >
+              <FiDownload className="mr-1" />
+              Download
+            </a>
+          )}
+        </div>
+
+        {onAnalyze && !video.frame_analysis && (
+          <button
+            onClick={() => onAnalyze(video.id)}
+            disabled={isAnalyzing}
+            className={`text-sm font-medium flex items-center ${
+              isAnalyzing
+                ? theme === 'dark' ? 'text-yellow-600 cursor-not-allowed' : 'text-yellow-400 cursor-not-allowed'
+                : theme === 'dark' ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-800'
+            }`}
+          >
+            {isAnalyzing ? (
+              <>
+                <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                Analyzing...
+              </>
+            ) : (
+              <>
+                <FiRefreshCw className="mr-1" />
+                Analyze
+              </>
+            )}
+          </button>
         )}
       </div>
 
@@ -281,18 +312,37 @@ export default function VideoCard({ video }: VideoCardProps) {
                   </div>
                 </div>
 
-                {video.summary ? (
+                {video.frame_analysis ? (
                   <div>
                     <h4 className={`font-medium mb-2 ${
                       theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
                     }`}>
                       AI Analysis
                     </h4>
-                    <p className={`text-sm ${
+                    <div className={`text-sm ${
                       theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                    } max-h-60 overflow-y-auto p-4 rounded-lg ${
+                      theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-100'
                     }`}>
-                      {video.summary}
-                    </p>
+                      {video.frame_analysis.split('\n').map((line, index) => (
+                        <p key={index} className={line.startsWith('#') ? 'font-bold mt-2' : 'mb-2'}>
+                          {line}
+                        </p>
+                      ))}
+                    </div>
+                  </div>
+                ) : isAnalyzing ? (
+                  <div className={`p-4 rounded-lg ${
+                    theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                  } text-center`}>
+                    <div className="flex justify-center items-center space-x-2">
+                      <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></div>
+                      <p className={`text-sm ${
+                        theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
+                      }`}>
+                        Analysis in progress...
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <div className={`p-4 rounded-lg ${
@@ -301,8 +351,21 @@ export default function VideoCard({ video }: VideoCardProps) {
                     <p className={`text-sm ${
                       theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
                     }`}>
-                      Analysis in progress...
+                      This video has not been analyzed yet.
                     </p>
+                    {onAnalyze && (
+                      <button
+                        onClick={() => {
+                          setShowDetails(false);
+                          onAnalyze(video.id);
+                        }}
+                        className={`mt-2 px-4 py-2 rounded-lg ${
+                          theme === 'dark' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                        } text-white text-sm`}
+                      >
+                        Analyze Now
+                      </button>
+                    )}
                   </div>
                 )}
 

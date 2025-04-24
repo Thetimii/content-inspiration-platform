@@ -31,6 +31,8 @@ export default function Dashboard() {
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsedQueries, setCollapsedQueries] = useState<Record<string, boolean>>({}); // Track which queries are collapsed
   const [scrapingQueries, setScrapingQueries] = useState<Record<string, boolean>>({}); // Track which queries are being scraped
+  const [analyzingVideos, setAnalyzingVideos] = useState<Record<string, boolean>>({}); // Track which videos are being analyzed
+  const [generatingRecommendation, setGeneratingRecommendation] = useState<boolean>(false); // Track if a recommendation is being generated
   const { theme } = useTheme();
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
 
@@ -389,6 +391,198 @@ export default function Dashboard() {
     }
   };
 
+  // Function to analyze a single video
+  const analyzeVideo = async (videoId: string) => {
+    try {
+      // Mark this video as being analyzed
+      setAnalyzingVideos(prev => ({ ...prev, [videoId]: true }));
+
+      console.log(`Analyzing video ID: ${videoId}`);
+
+      const response = await fetch('/api/direct-analyze', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          videoId,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Analysis response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to analyze video');
+      }
+
+      // Refresh the videos data
+      const { data: videosData } = await supabase
+        .from('tiktok_videos')
+        .select('*, trend_queries(query)')
+        .eq('id', videoId)
+        .single();
+
+      if (videosData) {
+        // Update the videos state with the updated video
+        setVideos(prev => {
+          // Replace the video with the updated one
+          return prev.map(v => v.id === videoId ? videosData : v);
+        });
+      }
+
+      // Show a success message
+      alert('Video analyzed successfully!');
+    } catch (error: any) {
+      console.error('Error analyzing video:', error);
+      alert(`Error analyzing video: ${error.message}`);
+    } finally {
+      // Mark this video as no longer being analyzed
+      setAnalyzingVideos(prev => ({ ...prev, [videoId]: false }));
+    }
+  };
+
+  // Function to analyze all videos for a query
+  const analyzeAllVideosForQuery = async (queryId: string) => {
+    try {
+      // Get all videos for this query
+      const queryVideos = videos.filter(video => video.trend_query_id === queryId);
+
+      if (queryVideos.length === 0) {
+        alert('No videos found for this query!');
+        return;
+      }
+
+      // Mark all videos as being analyzed
+      const newAnalyzingState: Record<string, boolean> = {};
+      queryVideos.forEach(video => {
+        newAnalyzingState[video.id] = true;
+      });
+      setAnalyzingVideos(prev => ({ ...prev, ...newAnalyzingState }));
+
+      // Process videos one by one
+      for (const video of queryVideos) {
+        try {
+          // Skip videos that already have analysis
+          if (video.frame_analysis) {
+            console.log(`Video ${video.id} already has analysis, skipping`);
+            setAnalyzingVideos(prev => ({ ...prev, [video.id]: false }));
+            continue;
+          }
+
+          console.log(`Analyzing video ID: ${video.id}`);
+
+          const response = await fetch('/api/direct-analyze', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              videoId: video.id,
+            }),
+          });
+
+          const data = await response.json();
+          console.log(`Analysis response for video ${video.id}:`, data);
+
+          if (!response.ok) {
+            console.error(`Error analyzing video ${video.id}:`, data.error);
+            continue; // Continue with the next video even if this one fails
+          }
+
+          // Refresh the videos data for this video
+          const { data: videoData } = await supabase
+            .from('tiktok_videos')
+            .select('*, trend_queries(query)')
+            .eq('id', video.id)
+            .single();
+
+          if (videoData) {
+            // Update the videos state with the updated video
+            setVideos(prev => {
+              // Replace the video with the updated one
+              return prev.map(v => v.id === video.id ? videoData : v);
+            });
+          }
+
+          // Mark this video as no longer being analyzed
+          setAnalyzingVideos(prev => ({ ...prev, [video.id]: false }));
+        } catch (error: any) {
+          console.error(`Error analyzing video ${video.id}:`, error);
+          // Mark this video as no longer being analyzed
+          setAnalyzingVideos(prev => ({ ...prev, [video.id]: false }));
+        }
+      }
+
+      // Show a success message
+      alert('Finished analyzing videos for this query!');
+    } catch (error: any) {
+      console.error('Error analyzing videos for query:', error);
+      alert(`Error: ${error.message}`);
+
+      // Reset all analyzing states
+      setAnalyzingVideos({});
+    }
+  };
+
+  // Function to generate a recommendation for a query
+  const generateRecommendationForQuery = async (queryId: string) => {
+    try {
+      // Set generating state
+      setGeneratingRecommendation(true);
+
+      console.log(`Generating recommendation for query ID: ${queryId}`);
+
+      const response = await fetch('/api/direct-recommendation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          queryId,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Recommendation response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to generate recommendation');
+      }
+
+      // Refresh the recommendations data
+      const { data: recommendationsData } = await supabase
+        .from('recommendations')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false });
+
+      if (recommendationsData) {
+        setRecommendations(recommendationsData);
+
+        // Set last update time from the most recent recommendation
+        if (recommendationsData.length > 0) {
+          setLastUpdateTime(new Date(recommendationsData[0].created_at).toLocaleString());
+        }
+      }
+
+      // Show a success message
+      alert('Recommendation generated successfully!');
+
+      // Switch to the recommendations tab
+      setActiveTab('recommendations');
+    } catch (error: any) {
+      console.error('Error generating recommendation:', error);
+      alert(`Error generating recommendation: ${error.message}`);
+    } finally {
+      // Reset generating state
+      setGeneratingRecommendation(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className={`flex min-h-screen items-center justify-center ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
@@ -660,34 +854,98 @@ export default function Dashboard() {
                                   {queryVideos.length} videos
                                 </span>
                               </h3>
-                              {queryVideos.length === 0 && (
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation(); // Prevent toggling the collapse
-                                    triggerScrapeForQuery(query.id);
-                                  }}
-                                  disabled={scrapingQueries[query.id]}
-                                  className={`ml-4 px-2 py-1 text-xs rounded-md ${
-                                    scrapingQueries[query.id]
-                                      ? `${theme === 'dark' ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-300 text-indigo-700'} cursor-not-allowed`
-                                      : `${theme === 'dark' ? 'bg-indigo-700 hover:bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`
-                                  }`}
-                                >
-                                  <span className="flex items-center">
-                                    {scrapingQueries[query.id] ? (
-                                      <>
-                                        <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
-                                        Scraping...
-                                      </>
-                                    ) : (
-                                      <>
-                                        <FiRefreshCw className="mr-1" />
-                                        Scrape Videos
-                                      </>
-                                    )}
-                                  </span>
-                                </button>
-                              )}
+                              <div className="flex ml-4 space-x-2">
+                                {queryVideos.length === 0 ? (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation(); // Prevent toggling the collapse
+                                      triggerScrapeForQuery(query.id);
+                                    }}
+                                    disabled={scrapingQueries[query.id]}
+                                    className={`px-2 py-1 text-xs rounded-md ${
+                                      scrapingQueries[query.id]
+                                        ? `${theme === 'dark' ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-300 text-indigo-700'} cursor-not-allowed`
+                                        : `${theme === 'dark' ? 'bg-indigo-700 hover:bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`
+                                    }`}
+                                  >
+                                    <span className="flex items-center">
+                                      {scrapingQueries[query.id] ? (
+                                        <>
+                                          <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                                          Scraping...
+                                        </>
+                                      ) : (
+                                        <>
+                                          <FiRefreshCw className="mr-1" />
+                                          Scrape Videos
+                                        </>
+                                      )}
+                                    </span>
+                                  </button>
+                                ) : (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation(); // Prevent toggling the collapse
+                                        analyzeAllVideosForQuery(query.id);
+                                      }}
+                                      disabled={Object.keys(analyzingVideos).some(id =>
+                                        queryVideos.some(v => v.id === id && analyzingVideos[id])
+                                      )}
+                                      className={`px-2 py-1 text-xs rounded-md ${
+                                        Object.keys(analyzingVideos).some(id =>
+                                          queryVideos.some(v => v.id === id && analyzingVideos[id])
+                                        )
+                                          ? `${theme === 'dark' ? 'bg-emerald-900 text-emerald-300' : 'bg-emerald-300 text-emerald-700'} cursor-not-allowed`
+                                          : `${theme === 'dark' ? 'bg-emerald-700 hover:bg-emerald-600 text-white' : 'bg-emerald-500 hover:bg-emerald-600 text-white'}`
+                                      }`}
+                                    >
+                                      <span className="flex items-center">
+                                        {Object.keys(analyzingVideos).some(id =>
+                                          queryVideos.some(v => v.id === id && analyzingVideos[id])
+                                        ) ? (
+                                          <>
+                                            <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                                            Analyzing...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <FiRefreshCw className="mr-1" />
+                                            Analyze Videos
+                                          </>
+                                        )}
+                                      </span>
+                                    </button>
+
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation(); // Prevent toggling the collapse
+                                        generateRecommendationForQuery(query.id);
+                                      }}
+                                      disabled={generatingRecommendation}
+                                      className={`px-2 py-1 text-xs rounded-md ${
+                                        generatingRecommendation
+                                          ? `${theme === 'dark' ? 'bg-amber-900 text-amber-300' : 'bg-amber-300 text-amber-700'} cursor-not-allowed`
+                                          : `${theme === 'dark' ? 'bg-amber-700 hover:bg-amber-600 text-white' : 'bg-amber-500 hover:bg-amber-600 text-white'}`
+                                      }`}
+                                    >
+                                      <span className="flex items-center">
+                                        {generatingRecommendation ? (
+                                          <>
+                                            <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                                            Generating...
+                                          </>
+                                        ) : (
+                                          <>
+                                            <FiStar className="mr-1" />
+                                            Generate Recommendation
+                                          </>
+                                        )}
+                                      </span>
+                                    </button>
+                                  </>
+                                )}
+                              </div>
                             </div>
                             <motion.div
                               className={theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}
@@ -704,7 +962,12 @@ export default function Dashboard() {
                           <div className={`p-4 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-white'} rounded-b-lg ${collapsedQueries[query.id] ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                               {queryVideos.map((video) => (
-                                <VideoCard key={video.id} video={video} />
+                                <VideoCard
+                                  key={video.id}
+                                  video={video}
+                                  onAnalyze={analyzeVideo}
+                                  isAnalyzing={analyzingVideos[video.id]}
+                                />
                               ))}
                             </div>
                           </div>
