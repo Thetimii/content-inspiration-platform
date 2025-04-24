@@ -42,75 +42,92 @@ export async function POST(request: Request) {
       );
     }
 
-    const allVideos: any[] = [];
-    const videoIdsForAnalysis: string[] = [];
+    // Process only the first query immediately and return a response
+    // The rest will be processed by chained API calls
+    if (queries.length > 0) {
+      // Start processing the first query in the background
+      // We don't await this to avoid timeouts
+      processQueryAndChain(queries, 0, userId).catch(error => {
+        console.error('Error in background processing:', error);
+      });
+    }
 
-    // Process each query with a delay between requests
-    for (let i = 0; i < queries.length; i++) {
-      const query = queries[i];
-      try {
-        console.log(`Processing query ${i+1}/${queries.length}: "${query.query}"`);
+    // Return immediately with a success response
+    return NextResponse.json({
+      success: true,
+      message: `Started processing ${queries.length} queries for user ${userId}. Results will be saved automatically.`,
+      status: 'processing'
+    });
+  } catch (error: any) {
+    console.error('Error in process-queries API route:', error);
 
-        // Scrape videos for this query
-        const videos = await scrapeTikTokVideos(query.query);
+    return NextResponse.json(
+      {
+        error: error.message || 'An error occurred during query processing',
+        suggestion: 'Please try again later or contact support if the issue persists.'
+      },
+      { status: 500 }
+    );
+  }
+}
 
-        // Save up to 5 videos per hashtag to database
-        const videosToSave = videos.slice(0, 5); // Take the first 5 videos
-        console.log(`Saving ${videosToSave.length} videos for query: ${query.query}`);
+// Process a single query and then chain to the next one
+// Export this function so it can be imported by process-single-query
+export async function processQueryAndChain(queries: any[], index: number, userId: string) {
+  if (index >= queries.length) {
+    console.log('All queries processed successfully');
+    return;
+  }
 
-        for (const video of videosToSave) {
-          // Skip videos with missing required data
-          if (!video.video_url) {
-            console.warn('Skipping video with missing URL');
-            continue;
-          }
+  const query = queries[index];
+  const allVideos: any[] = [];
+  const videoIdsForAnalysis: string[] = [];
 
-          const { data: videoData, error: videoError } = await supabase
-            .from('tiktok_videos')
-            .insert({
-              trend_query_id: query.id,
-              video_url: video.video_url,
-              caption: video.caption || '',
-              views: video.views || 0,
-              likes: video.likes || 0,
-              downloads: video.downloads || 0,
-              hashtags: Array.isArray(video.hashtags) ? video.hashtags : [],
-              cover_url: video.cover_url || '',
-              download_url: video.download_url || '',
-            })
-            .select();
+  try {
+    console.log(`Processing query ${index+1}/${queries.length}: "${query.query}"`);
 
-          if (videoError) {
-            console.error('Error saving video:', videoError);
-          } else if (videoData) {
-            allVideos.push(videoData[0]);
-            // Add video ID to the list for analysis
-            videoIdsForAnalysis.push(videoData[0].id);
-          }
-        }
+    // Scrape videos for this query
+    const videos = await scrapeTikTokVideos(query.query);
 
-        // Add a delay between processing each query to avoid rate limiting
-        // Only add delay if there are more queries to process
-        if (i < queries.length - 1) {
-          console.log(`Adding a 5-second delay before processing the next query...`);
-          await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-        }
-      } catch (scrapeError) {
-        console.error(`Error scraping videos for query "${query.query}":`, scrapeError);
-        // Continue with other queries even if one fails
+    // Save up to 5 videos per hashtag to database
+    const videosToSave = videos.slice(0, 5); // Take the first 5 videos
+    console.log(`Saving ${videosToSave.length} videos for query: ${query.query}`);
 
-        // Still add a delay before the next query even if this one failed
-        if (i < queries.length - 1) {
-          console.log(`Adding a 5-second delay before processing the next query (after error)...`);
-          await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-        }
+    for (const video of videosToSave) {
+      // Skip videos with missing required data
+      if (!video.video_url) {
+        console.warn('Skipping video with missing URL');
+        continue;
+      }
+
+      const { data: videoData, error: videoError } = await supabase
+        .from('tiktok_videos')
+        .insert({
+          trend_query_id: query.id,
+          video_url: video.video_url,
+          caption: video.caption || '',
+          views: video.views || 0,
+          likes: video.likes || 0,
+          downloads: video.downloads || 0,
+          hashtags: Array.isArray(video.hashtags) ? video.hashtags : [],
+          cover_url: video.cover_url || '',
+          download_url: video.download_url || '',
+        })
+        .select();
+
+      if (videoError) {
+        console.error('Error saving video:', videoError);
+      } else if (videoData) {
+        allVideos.push(videoData[0]);
+        // Add video ID to the list for analysis
+        videoIdsForAnalysis.push(videoData[0].id);
       }
     }
 
-    // Trigger video analysis for all videos we just scraped
+    // Trigger video analysis for videos from this query
     if (videoIdsForAnalysis.length > 0) {
       try {
-        console.log(`Triggering analysis for ${videoIdsForAnalysis.length} videos...`);
+        console.log(`Triggering analysis for ${videoIdsForAnalysis.length} videos from query ${index+1}...`);
 
         // Make a direct API call to trigger the analysis
         const analysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-one-by-one`, {
@@ -131,28 +148,113 @@ export async function POST(request: Request) {
           const analysisData = await analysisResponse.json();
           console.log('Analyze-one-by-one response:', analysisData);
         }
-
-        console.log('Video analysis for all videos triggered directly');
       } catch (triggerError) {
         console.error('Error setting up analysis trigger:', triggerError);
       }
     }
 
-    return NextResponse.json({
-      success: true,
-      message: `Scraped and saved ${allVideos.length} videos for ${queries.length} queries`,
-      videos: allVideos
-    });
-  } catch (error: any) {
-    console.error('Error in process-queries API route:', error);
+    // Update the query status in the database
+    await supabase
+      .from('trend_queries')
+      .update({ status: 'processed' })
+      .eq('id', query.id);
 
-    return NextResponse.json(
-      {
-        error: error.message || 'An error occurred during query processing',
-        suggestion: 'Please try again later or contact support if the issue persists.'
-      },
-      { status: 500 }
-    );
+    // Wait 5 seconds before processing the next query
+    console.log(`Waiting 5 seconds before processing the next query...`);
+    await new Promise(resolve => setTimeout(resolve, 5000));
+
+    // Process the next query by making a new API call instead of continuing in this function
+    // This prevents timeouts by breaking the work into smaller chunks
+    if (index < queries.length - 1) {
+      console.log(`Chaining to next query ${index+2}/${queries.length}`);
+
+      // Make a direct API call to process the next query
+      const nextQueryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-single-query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          queries,
+          currentIndex: index + 1
+        }),
+      });
+
+      if (!nextQueryResponse.ok) {
+        console.error('Error chaining to next query:', await nextQueryResponse.text());
+      } else {
+        console.log('Successfully chained to next query');
+      }
+    } else {
+      console.log('All queries have been processed');
+
+      // All queries are done, trigger recommendation generation
+      try {
+        // Get all video IDs for this user's queries
+        const { data: allUserVideos } = await supabase
+          .from('tiktok_videos')
+          .select('id')
+          .in('trend_query_id', queries.map(q => q.id));
+
+        if (allUserVideos && allUserVideos.length > 0) {
+          const allVideoIds = allUserVideos.map(v => v.id);
+
+          // Trigger recommendation generation
+          console.log(`Triggering recommendation generation for ${allVideoIds.length} videos`);
+
+          const recommendationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-recommendation`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId,
+              videoIds: allVideoIds
+            }),
+          });
+
+          if (!recommendationResponse.ok) {
+            console.error('Error triggering recommendation generation:', await recommendationResponse.text());
+          } else {
+            console.log('Successfully triggered recommendation generation');
+          }
+        }
+      } catch (error) {
+        console.error('Error triggering recommendation generation:', error);
+      }
+    }
+  } catch (error) {
+    console.error(`Error processing query "${query.query}":`, error);
+
+    // Update the query status to error
+    await supabase
+      .from('trend_queries')
+      .update({ status: 'error' })
+      .eq('id', query.id);
+
+    // Still try to process the next query
+    if (index < queries.length - 1) {
+      console.log(`Attempting to continue with next query despite error...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Chain to the next query
+      const nextQueryResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/process-single-query`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          queries,
+          currentIndex: index + 1
+        }),
+      });
+
+      if (!nextQueryResponse.ok) {
+        console.error('Error chaining to next query after error:', await nextQueryResponse.text());
+      }
+    }
   }
 }
 

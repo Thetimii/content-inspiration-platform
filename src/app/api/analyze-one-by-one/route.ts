@@ -19,79 +19,19 @@ export async function POST(request: Request) {
 
     console.log(`Starting analysis for ${videoIds.length} videos for user ${userId}`);
 
-    // Process the first video immediately and schedule the rest
-    const firstVideoId = videoIds[0];
-    const remainingVideoIds = videoIds.slice(1);
-
-    // Process the first video
-    try {
-      await analyzeVideo(firstVideoId);
-      console.log(`Analyzed first video: ${firstVideoId}`);
-    } catch (error) {
-      console.error(`Error analyzing first video ${firstVideoId}:`, error);
-    }
-
-    // Add a delay before processing the next video to avoid rate limiting
-    if (remainingVideoIds.length > 0) {
-      console.log(`Adding a 5-second delay before processing the next video...`);
-      await new Promise(resolve => setTimeout(resolve, 5000)); // 5 second delay
-    }
-
-    // Process the remaining videos directly
-    if (remainingVideoIds.length > 0) {
-      try {
-        // Make a direct API call to process the next video
-        console.log(`Directly calling analyze-one-by-one for the next ${remainingVideoIds.length} videos`);
-
-        const nextAnalysisResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-one-by-one`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            videoIds: remainingVideoIds
-          })
-        });
-
-        if (!nextAnalysisResponse.ok) {
-          const errorData = await nextAnalysisResponse.json();
-          console.error('Error from next analyze-one-by-one call:', errorData);
-        } else {
-          const nextAnalysisData = await nextAnalysisResponse.json();
-          console.log('Next analyze-one-by-one response:', nextAnalysisData);
-        }
-      } catch (e) {
-        console.error('Failed to call next video analysis:', e);
-      }
-    } else {
-      // All videos have been analyzed, generate a recommendation
-      try {
-        console.log('All videos analyzed, generating recommendation...');
-
-        // Make a direct API call to generate recommendations
-        const recommendationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-recommendation`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId,
-            videoIds
-          })
-        });
-
-        if (!recommendationResponse.ok) {
-          const errorData = await recommendationResponse.json();
-          console.error('Error from generate-recommendation:', errorData);
-        } else {
-          const recommendationData = await recommendationResponse.json();
-          console.log('Generate-recommendation response:', recommendationData);
-        }
-      } catch (e) {
-        console.error('Failed to generate recommendation:', e);
-      }
+    // Process the first video in the background and return immediately
+    // This prevents timeouts by not waiting for the analysis to complete
+    if (videoIds.length > 0) {
+      // Start processing in the background
+      processVideoAndChain(videoIds, 0, userId).catch(error => {
+        console.error('Error in background video processing:', error);
+      });
     }
 
     return NextResponse.json({
       success: true,
-      message: `Started analysis for video ${firstVideoId}, scheduled ${remainingVideoIds.length} more`
+      message: `Started analysis for ${videoIds.length} videos. Results will be saved automatically.`,
+      status: 'processing'
     });
   } catch (error: any) {
     console.error('Error in analyze-one-by-one API route:', error);
@@ -103,6 +43,107 @@ export async function POST(request: Request) {
       },
       { status: 500 }
     );
+  }
+}
+
+// Process a single video and then chain to the next one
+export async function processVideoAndChain(videoIds: string[], index: number, userId: string) {
+  if (index >= videoIds.length) {
+    console.log('All videos processed successfully');
+    return;
+  }
+
+  const videoId = videoIds[index];
+
+  try {
+    console.log(`Processing video ${index+1}/${videoIds.length}: ${videoId}`);
+
+    // Analyze the current video
+    await analyzeVideo(videoId);
+    console.log(`Analyzed video ${index+1}/${videoIds.length}: ${videoId}`);
+
+    // Wait 5 seconds before processing the next video
+    if (index < videoIds.length - 1) {
+      console.log(`Waiting 5 seconds before processing the next video...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+    }
+
+    // Process the next video by making a new API call instead of continuing in this function
+    // This prevents timeouts by breaking the work into smaller chunks
+    if (index < videoIds.length - 1) {
+      console.log(`Chaining to next video ${index+2}/${videoIds.length}`);
+
+      // Make a direct API call to process the next video
+      const nextVideoResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-single-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          videoIds,
+          currentIndex: index + 1
+        }),
+      });
+
+      if (!nextVideoResponse.ok) {
+        console.error('Error chaining to next video:', await nextVideoResponse.text());
+      } else {
+        console.log('Successfully chained to next video');
+      }
+    } else {
+      console.log('All videos have been analyzed');
+
+      // All videos are done, trigger recommendation generation
+      try {
+        console.log('All videos analyzed, generating recommendation...');
+
+        // Make a direct API call to generate recommendations
+        const recommendationResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/generate-recommendation`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            userId,
+            videoIds
+          }),
+        });
+
+        if (!recommendationResponse.ok) {
+          console.error('Error triggering recommendation generation:', await recommendationResponse.text());
+        } else {
+          console.log('Successfully triggered recommendation generation');
+        }
+      } catch (error) {
+        console.error('Error triggering recommendation generation:', error);
+      }
+    }
+  } catch (error) {
+    console.error(`Error analyzing video ${videoId}:`, error);
+
+    // Still try to process the next video
+    if (index < videoIds.length - 1) {
+      console.log(`Attempting to continue with next video despite error...`);
+      await new Promise(resolve => setTimeout(resolve, 5000));
+
+      // Chain to the next video
+      const nextVideoResponse = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/analyze-single-video`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          videoIds,
+          currentIndex: index + 1
+        }),
+      });
+
+      if (!nextVideoResponse.ok) {
+        console.error('Error chaining to next video after error:', await nextVideoResponse.text());
+      }
+    }
   }
 }
 
