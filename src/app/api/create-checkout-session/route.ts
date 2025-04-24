@@ -3,18 +3,14 @@ import { createClient } from '@/utils/supabase/server';
 import { cookies } from 'next/headers';
 import Stripe from 'stripe';
 
-// Initialize Stripe directly
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-  apiVersion: '2023-10-16',
-});
-
-// Trial period in days
-const TRIAL_PERIOD_DAYS = 7;
-
 export async function POST(req: Request) {
+  console.log('Starting create-checkout-session handler');
+  
   try {
-    // Log the start of the function for debugging
-    console.log('Starting create-checkout-session handler');
+    // Initialize Stripe
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
+      apiVersion: '2023-10-16',
+    });
     
     // Get the user from the session
     const cookieStore = cookies();
@@ -44,7 +40,7 @@ export async function POST(req: Request) {
     
     console.log('Using price ID:', priceId);
 
-    // Create Checkout Session
+    // Create a simple checkout session with minimal options
     console.log('Creating checkout session...');
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
@@ -55,20 +51,9 @@ export async function POST(req: Request) {
         },
       ],
       mode: 'subscription',
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard?success=true&session_id={CHECKOUT_SESSION_ID}`,
+      success_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/dashboard?success=true`,
       cancel_url: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/checkout?canceled=true`,
       customer_email: user.email,
-      metadata: {
-        userId: user.id,
-      },
-      subscription_data: {
-        trial_period_days: TRIAL_PERIOD_DAYS,
-        metadata: {
-          userId: user.id,
-        },
-      },
-      billing_address_collection: 'auto',
-      allow_promotion_codes: true,
     });
 
     console.log('Checkout session created:', session.id);
