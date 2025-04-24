@@ -30,6 +30,7 @@ export default function Dashboard() {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [collapsedQueries, setCollapsedQueries] = useState<Record<string, boolean>>({}); // Track which queries are collapsed
+  const [scrapingQueries, setScrapingQueries] = useState<Record<string, boolean>>({}); // Track which queries are being scraped
   const { theme } = useTheme();
   const [lastUpdateTime, setLastUpdateTime] = useState<string | null>(null);
 
@@ -252,6 +253,142 @@ export default function Dashboard() {
     generateTrends(userProfile.business_description, user.id);
   };
 
+  // Function to trigger scraping for a specific query
+  const triggerScrapeForQuery = async (queryId: string) => {
+    try {
+      // Mark this query as being scraped
+      setScrapingQueries(prev => ({ ...prev, [queryId]: true }));
+
+      console.log(`Triggering scrape for query ID: ${queryId}`);
+
+      const response = await fetch('/api/trigger-scrape', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: user.id,
+          queryId,
+        }),
+      });
+
+      const data = await response.json();
+      console.log('Scrape response:', data);
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to scrape videos');
+      }
+
+      // Refresh the videos data
+      const { data: videosData } = await supabase
+        .from('tiktok_videos')
+        .select('*, trend_queries(query)')
+        .eq('trend_query_id', queryId)
+        .order('likes', { ascending: false });
+
+      if (videosData) {
+        // Update the videos state with the new videos
+        setVideos(prev => {
+          // Remove any existing videos for this query
+          const filteredVideos = prev.filter(v => v.trend_query_id !== queryId);
+          // Add the new videos
+          return [...filteredVideos, ...videosData];
+        });
+      }
+
+      // Show a success message
+      alert(`Successfully scraped ${data.videos?.length || 0} videos for this query!`);
+    } catch (error: any) {
+      console.error('Error scraping videos:', error);
+      alert(`Error scraping videos: ${error.message}`);
+    } finally {
+      // Mark this query as no longer being scraped
+      setScrapingQueries(prev => ({ ...prev, [queryId]: false }));
+    }
+  };
+
+  // Function to trigger scraping for all queries
+  const triggerScrapeForAllQueries = async () => {
+    try {
+      // Get queries that don't have videos yet
+      const queriesToScrape = trendQueries.filter(query => {
+        // Check if this query has any videos
+        return !videos.some(video => video.trend_query_id === query.id);
+      });
+
+      if (queriesToScrape.length === 0) {
+        alert('All queries already have videos!');
+        return;
+      }
+
+      // Mark all queries as being scraped
+      const newScrapingState: Record<string, boolean> = {};
+      queriesToScrape.forEach(query => {
+        newScrapingState[query.id] = true;
+      });
+      setScrapingQueries(prev => ({ ...prev, ...newScrapingState }));
+
+      // Process queries one by one
+      for (const query of queriesToScrape) {
+        try {
+          console.log(`Triggering scrape for query ID: ${query.id}`);
+
+          const response = await fetch('/api/trigger-scrape', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              userId: user.id,
+              queryId: query.id,
+            }),
+          });
+
+          const data = await response.json();
+          console.log(`Scrape response for query ${query.id}:`, data);
+
+          if (!response.ok) {
+            console.error(`Error scraping videos for query ${query.id}:`, data.error);
+            continue; // Continue with the next query even if this one fails
+          }
+
+          // Refresh the videos data for this query
+          const { data: videosData } = await supabase
+            .from('tiktok_videos')
+            .select('*, trend_queries(query)')
+            .eq('trend_query_id', query.id)
+            .order('likes', { ascending: false });
+
+          if (videosData) {
+            // Update the videos state with the new videos
+            setVideos(prev => {
+              // Remove any existing videos for this query
+              const filteredVideos = prev.filter(v => v.trend_query_id !== query.id);
+              // Add the new videos
+              return [...filteredVideos, ...videosData];
+            });
+          }
+
+          // Mark this query as no longer being scraped
+          setScrapingQueries(prev => ({ ...prev, [query.id]: false }));
+        } catch (error: any) {
+          console.error(`Error scraping videos for query ${query.id}:`, error);
+          // Mark this query as no longer being scraped
+          setScrapingQueries(prev => ({ ...prev, [query.id]: false }));
+        }
+      }
+
+      // Show a success message
+      alert('Finished scraping videos for all queries!');
+    } catch (error: any) {
+      console.error('Error scraping videos for all queries:', error);
+      alert(`Error: ${error.message}`);
+
+      // Reset all scraping states
+      setScrapingQueries({});
+    }
+  };
+
   if (loading) {
     return (
       <div className={`flex min-h-screen items-center justify-center ${theme === 'dark' ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-800'}`}>
@@ -432,10 +569,38 @@ export default function Dashboard() {
               transition={{ duration: 0.2 }}
             >
               <div className={`${theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'} p-6 rounded-xl mb-8`}>
-                <h2 className="text-xl font-semibold mb-4 flex items-center">
-                  <FiTrendingUp className="mr-2 text-indigo-600" />
-                  Top Trending Videos
-                </h2>
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-semibold flex items-center">
+                    <FiTrendingUp className="mr-2 text-indigo-600" />
+                    Top Trending Videos
+                  </h2>
+
+                  {trendQueries.length > 0 && (
+                    <button
+                      onClick={() => triggerScrapeForAllQueries()}
+                      disabled={Object.values(scrapingQueries).some(Boolean)}
+                      className={`px-3 py-1.5 text-sm rounded-md ${
+                        Object.values(scrapingQueries).some(Boolean)
+                          ? `${theme === 'dark' ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-300 text-indigo-700'} cursor-not-allowed`
+                          : `${theme === 'dark' ? 'bg-indigo-700 hover:bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`
+                      }`}
+                    >
+                      <span className="flex items-center">
+                        {Object.values(scrapingQueries).some(Boolean) ? (
+                          <>
+                            <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-2"></div>
+                            Scraping...
+                          </>
+                        ) : (
+                          <>
+                            <FiRefreshCw className="mr-2" />
+                            Scrape All Queries
+                          </>
+                        )}
+                      </span>
+                    </button>
+                  )}
+                </div>
 
                 {generating ? (
                   <div className="animate-pulse">
@@ -487,13 +652,43 @@ export default function Dashboard() {
                               }));
                             }}
                           >
-                            <h3 className={`text-lg font-medium flex items-center ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-800'}`}>
-                              <FiHash className="mr-2" />
-                              {query.query}
-                              <span className={`ml-2 text-xs ${theme === 'dark' ? 'bg-indigo-800/50 text-indigo-300' : 'bg-indigo-100 text-indigo-600'} px-2 py-0.5 rounded-full`}>
-                                {queryVideos.length} videos
-                              </span>
-                            </h3>
+                            <div className="flex items-center">
+                              <h3 className={`text-lg font-medium flex items-center ${theme === 'dark' ? 'text-indigo-300' : 'text-indigo-800'}`}>
+                                <FiHash className="mr-2" />
+                                {query.query}
+                                <span className={`ml-2 text-xs ${theme === 'dark' ? 'bg-indigo-800/50 text-indigo-300' : 'bg-indigo-100 text-indigo-600'} px-2 py-0.5 rounded-full`}>
+                                  {queryVideos.length} videos
+                                </span>
+                              </h3>
+                              {queryVideos.length === 0 && (
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation(); // Prevent toggling the collapse
+                                    triggerScrapeForQuery(query.id);
+                                  }}
+                                  disabled={scrapingQueries[query.id]}
+                                  className={`ml-4 px-2 py-1 text-xs rounded-md ${
+                                    scrapingQueries[query.id]
+                                      ? `${theme === 'dark' ? 'bg-indigo-900 text-indigo-300' : 'bg-indigo-300 text-indigo-700'} cursor-not-allowed`
+                                      : `${theme === 'dark' ? 'bg-indigo-700 hover:bg-indigo-600 text-white' : 'bg-indigo-500 hover:bg-indigo-600 text-white'}`
+                                  }`}
+                                >
+                                  <span className="flex items-center">
+                                    {scrapingQueries[query.id] ? (
+                                      <>
+                                        <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                                        Scraping...
+                                      </>
+                                    ) : (
+                                      <>
+                                        <FiRefreshCw className="mr-1" />
+                                        Scrape Videos
+                                      </>
+                                    )}
+                                  </span>
+                                </button>
+                              )}
+                            </div>
                             <motion.div
                               className={theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'}
                               animate={{ rotate: collapsedQueries[query.id] ? 180 : 0 }}
