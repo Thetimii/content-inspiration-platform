@@ -103,11 +103,13 @@ export async function POST(request: Request) {
           origin_cover: item.origin_cover
         });
 
-        // Prioritize the download URL - this is the most important field for analysis
-        const downloadUrl = item.download || item.wmplay || item.play || '';
+        // Initially use whatever URL is available
+        let downloadUrl = item.download || item.wmplay || item.play || '';
 
-        // Log the selected download URL
-        console.log(`Selected download URL: ${downloadUrl}`);
+        // Log the initially selected download URL
+        console.log(`Initial download URL: ${downloadUrl}`);
+
+        // We'll get a clean download URL later when we analyze the video
 
         const mappedVideo = {
           video_url: item.play || item.wmplay || '',

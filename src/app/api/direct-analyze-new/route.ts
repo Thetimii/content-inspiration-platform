@@ -5,6 +5,12 @@ import { supabase } from '@/utils/supabase';
 /**
  * API endpoint to directly analyze a single video
  * This version ensures we get a clean, no-watermark video URL before passing it to the AI
+ *
+ * IMPORTANT: This endpoint is responsible for:
+ * 1. Getting a clean, no-watermark download URL from RapidAPI using the getVideo endpoint
+ * 2. Updating the video record in the database with this clean URL
+ * 3. Passing the clean URL to the OpenRouter API for analysis
+ * 4. Saving the analysis results to the database
  */
 export async function POST(request: Request) {
   try {
