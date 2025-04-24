@@ -7,25 +7,41 @@ import axios from 'axios';
 export async function GET(request: Request) {
   try {
     const apiKey = process.env.OPENROUTER_API_KEY;
-    
+
     // Log the API key (masked for security)
-    const maskedKey = apiKey ? 
-      apiKey.substring(0, 5) + '...' + apiKey.substring(apiKey.length - 5) : 
+    const maskedKey = apiKey ?
+      apiKey.substring(0, 5) + '...' + apiKey.substring(apiKey.length - 5) :
       'NOT SET';
     console.log(`Using OpenRouter API key: ${maskedKey}`);
-    
+
     // Log environment information
     console.log('Environment variables:');
     console.log('- NEXT_PUBLIC_APP_URL:', process.env.NEXT_PUBLIC_APP_URL || 'not set');
     console.log('- NODE_ENV:', process.env.NODE_ENV || 'not set');
-    
+
     if (!apiKey) {
       return NextResponse.json(
         { error: 'OpenRouter API key is not configured' },
         { status: 500 }
       );
     }
-    
+
+    // Sanitize the API key - remove any whitespace or invalid characters
+    const sanitizedApiKey = apiKey.trim();
+
+    // Log sanitized key info
+    console.log('Original API key length:', apiKey.length);
+    console.log('Sanitized API key length:', sanitizedApiKey.length);
+    console.log('First 5 chars of sanitized key:', sanitizedApiKey.substring(0, 5));
+
+    // Check for common issues
+    if (sanitizedApiKey.includes(' ')) {
+      console.error('API key contains spaces');
+    }
+    if (sanitizedApiKey.includes('\n') || sanitizedApiKey.includes('\r')) {
+      console.error('API key contains newlines');
+    }
+
     // Make a simple request to OpenRouter to check if the API key is valid
     const response = await axios.post(
       'https://openrouter.ai/api/v1/chat/completions',
@@ -40,14 +56,14 @@ export async function GET(request: Request) {
       },
       {
         headers: {
-          'Authorization': `Bearer ${apiKey}`,
+          'Authorization': `Bearer ${sanitizedApiKey}`,
           'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
           'X-Title': 'Lazy Trends API Key Test',
           'Content-Type': 'application/json'
         }
       }
     );
-    
+
     return NextResponse.json({
       status: 'success',
       message: 'OpenRouter API key is valid',
@@ -59,9 +75,9 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error('Error testing OpenRouter API key:', error);
-    
+
     return NextResponse.json(
-      { 
+      {
         error: 'Failed to validate OpenRouter API key',
         message: error.message,
         status: error.response?.status,

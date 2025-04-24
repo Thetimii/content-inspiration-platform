@@ -194,6 +194,48 @@ export default function ApiStatusPage() {
               </div>
             </div>
 
+            {envStatus.apiKeyAnalysis && (
+              <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'} mb-4`}>
+                <h3 className="font-medium mb-2">API Key Analysis</h3>
+                <div className="space-y-2">
+                  <p>
+                    <span className="font-medium">Original Length:</span>{' '}
+                    {envStatus.apiKeyAnalysis.originalLength} characters
+                  </p>
+                  <p>
+                    <span className="font-medium">Sanitized Length:</span>{' '}
+                    {envStatus.apiKeyAnalysis.sanitizedLength} characters
+                  </p>
+                  <p>
+                    <span className="font-medium">Contains Spaces:</span>{' '}
+                    <span className={envStatus.apiKeyAnalysis.hasSpaces ? 'text-red-500' : 'text-green-500'}>
+                      {envStatus.apiKeyAnalysis.hasSpaces ? 'Yes (Problem)' : 'No'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">Contains Newlines:</span>{' '}
+                    <span className={envStatus.apiKeyAnalysis.hasNewlines ? 'text-red-500' : 'text-green-500'}>
+                      {envStatus.apiKeyAnalysis.hasNewlines ? 'Yes (Problem)' : 'No'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">Contains Invalid Characters:</span>{' '}
+                    <span className={envStatus.apiKeyAnalysis.hasInvalidChars ? 'text-red-500' : 'text-green-500'}>
+                      {envStatus.apiKeyAnalysis.hasInvalidChars ? 'Yes (Problem)' : 'No'}
+                    </span>
+                  </p>
+                  <p>
+                    <span className="font-medium">First 5 Characters:</span>{' '}
+                    {envStatus.apiKeyAnalysis.firstFiveChars}
+                  </p>
+                  <p>
+                    <span className="font-medium">Last 5 Characters:</span>{' '}
+                    {envStatus.apiKeyAnalysis.lastFiveChars}
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div className={`p-4 rounded-lg ${theme === 'dark' ? 'bg-gray-700/50' : 'bg-gray-50'}`}>
               <h3 className="font-medium mb-2">Environment Variables</h3>
               <div className="space-y-2">
