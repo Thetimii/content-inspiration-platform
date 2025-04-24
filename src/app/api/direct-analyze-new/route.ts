@@ -234,6 +234,32 @@ async function analyzeVideoInBackground(videoId: string, downloadUrl: string) {
   try {
     console.log(`Starting background analysis for video ${videoId}`);
 
+    // Ensure the storage bucket exists
+    try {
+      const { data: buckets } = await supabase.storage.listBuckets();
+      const bucketExists = buckets?.some(bucket => bucket.name === 'tiktok-videos') || false;
+
+      if (!bucketExists) {
+        console.log('Creating tiktok-videos storage bucket');
+        const { error } = await supabase.storage.createBucket('tiktok-videos', {
+          public: true,
+          fileSizeLimit: 52428800, // 50MB
+          allowedMimeTypes: ['video/mp4']
+        });
+
+        if (error) {
+          console.error('Error creating storage bucket:', error);
+        } else {
+          console.log('Storage bucket created successfully');
+        }
+      } else {
+        console.log('Storage bucket tiktok-videos already exists');
+      }
+    } catch (bucketError: any) {
+      console.error('Error checking/creating storage bucket:', bucketError);
+      console.error('Will attempt to continue anyway');
+    }
+
     // Get the OpenRouter API key
     const openRouterApiKey = process.env.OPENROUTER_API_KEY;
     if (!openRouterApiKey) {
@@ -302,62 +328,134 @@ Be specific and detailed in your analysis.`;
         return;
       }
 
-      // Now proceed with the OpenRouter API call
-      console.log(`Sending request to OpenRouter API with model: qwen/qwen-2.5-vl-72b-instruct`);
-      const openRouterResponse = await axios.post(
-        'https://openrouter.ai/api/v1/chat/completions',
-        {
-          model: 'qwen/qwen-2.5-vl-72b-instruct',
-          messages: [
-            {
-              role: 'user',
-              content: [
-                { type: 'text', text: prompt },
-                { type: 'image_url', image_url: { url: downloadUrl } }
-              ]
-            }
-          ]
-        },
-        {
+      // Download the video file to Supabase storage
+      console.log(`Downloading video file from ${downloadUrl} to Supabase storage`);
+
+      let supabaseFileUrl = '';
+      let fileKey = '';
+
+      try {
+        // Download the video file
+        const response = await axios.get(downloadUrl, {
+          responseType: 'arraybuffer',
           headers: {
-            'Authorization': `Bearer ${openRouterApiKey.trim()}`,
-            'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
-            'X-Title': 'Lazy Trends',
-            'Content-Type': 'application/json'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
           },
-          timeout: 120000 // 2 minute timeout
+          timeout: 30000 // 30 second timeout for download
+        });
+
+        console.log(`Video file downloaded, size: ${response.data.byteLength} bytes`);
+
+        // Generate a unique file name
+        fileKey = `temp-videos/${videoId}-${Date.now()}.mp4`;
+
+        // Upload the file to Supabase storage
+        const { error: uploadError } = await supabase.storage
+          .from('tiktok-videos')
+          .upload(fileKey, response.data, {
+            contentType: 'video/mp4',
+            cacheControl: '3600'
+          });
+
+        if (uploadError) {
+          throw new Error(`Error uploading to Supabase storage: ${uploadError.message}`);
         }
-      );
 
-      console.log('OpenRouter API response received');
+        console.log(`Video file uploaded to Supabase storage: ${fileKey}`);
 
-      // Extract the analysis from the response
-      const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
+        // Get the public URL for the file
+        const { data: publicUrlData } = supabase.storage
+          .from('tiktok-videos')
+          .getPublicUrl(fileKey);
 
-      if (!analysis || analysis.length < 10) {
-        console.error('Empty or too short analysis received');
-        await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
-        return;
+        supabaseFileUrl = publicUrlData.publicUrl;
+        console.log(`Public URL for video file: ${supabaseFileUrl}`);
+
+        // Now proceed with the OpenRouter API call using the Supabase file URL
+        console.log(`Sending request to OpenRouter API with model: qwen/qwen-2.5-vl-72b-instruct`);
+        const openRouterResponse = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          {
+            model: 'qwen/qwen-2.5-vl-72b-instruct',
+            messages: [
+              {
+                role: 'user',
+                content: [
+                  { type: 'text', text: prompt },
+                  { type: 'image_url', image_url: { url: supabaseFileUrl } }
+                ]
+              }
+            ]
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${openRouterApiKey.trim()}`,
+              'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
+              'X-Title': 'Lazy Trends',
+              'Content-Type': 'application/json'
+            },
+            timeout: 120000 // 2 minute timeout
+          }
+        );
+
+        console.log('OpenRouter API response received');
+
+        // Extract the analysis from the response
+        const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
+
+        if (!analysis || analysis.length < 10) {
+          console.error('Empty or too short analysis received');
+          await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
+          return;
+        }
+
+        console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
+
+        // Update the video with the analysis
+        const { error: updateError } = await supabase
+          .from('tiktok_videos')
+          .update({
+            frame_analysis: analysis,
+            summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
+            last_analyzed_at: new Date().toISOString()
+          })
+          .eq('id', videoId);
+
+        if (updateError) {
+          console.error('Error updating video with analysis:', updateError);
+          return;
+        }
+
+        console.log(`Successfully updated video ${videoId} with analysis`);
+
+        // Delete the temporary file from Supabase storage
+        console.log(`Deleting temporary file from Supabase storage: ${fileKey}`);
+        const { error: deleteError } = await supabase.storage
+          .from('tiktok-videos')
+          .remove([fileKey]);
+
+        if (deleteError) {
+          console.error(`Error deleting temporary file: ${deleteError.message}`);
+        } else {
+          console.log(`Successfully deleted temporary file: ${fileKey}`);
+        }
+      } catch (fileError: any) {
+        console.error('Error processing video file:', fileError);
+        console.error('Error details:', fileError.message || 'Unknown error');
+        await updateVideoWithError(videoId, `Error processing video file: ${fileError.message || 'Unknown error'}`);
+
+        // Try to delete the file if it was uploaded
+        if (fileKey) {
+          try {
+            await supabase.storage
+              .from('tiktok-videos')
+              .remove([fileKey]);
+            console.log(`Cleaned up temporary file after error: ${fileKey}`);
+          } catch (cleanupError) {
+            console.error('Error cleaning up temporary file:', cleanupError);
+          }
+        }
       }
-
-      console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
-
-      // Update the video with the analysis
-      const { error: updateError } = await supabase
-        .from('tiktok_videos')
-        .update({
-          frame_analysis: analysis,
-          summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
-          last_analyzed_at: new Date().toISOString()
-        })
-        .eq('id', videoId);
-
-      if (updateError) {
-        console.error('Error updating video with analysis:', updateError);
-        return;
-      }
-
-      console.log(`Successfully updated video ${videoId} with analysis`);
 
     } catch (error: any) {
       console.error('Error analyzing video with OpenRouter:', error);
