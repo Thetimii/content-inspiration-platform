@@ -2,33 +2,35 @@ import { NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { supabase } from '@/utils/supabase';
 
-export async function POST(_req: Request) {
+export async function POST(req: Request) {
   try {
-    // Initialize Stripe with the secret key
-    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '', {
-      apiVersion: '2025-03-31.basil' as any,
-    });
+    // Get the request body
+    const { email, userId } = await req.json();
 
-    // Get the current authenticated user from Supabase
-    const { data: sessionData } = await supabase.auth.getSession();
-    if (!sessionData.session) {
+    if (!userId || !email) {
       return NextResponse.json(
-        { error: 'User not authenticated' },
-        { status: 401 }
-      );
-    }
-
-    const userId = sessionData.session.user.id;
-    const userEmail = sessionData.session.user.email;
-
-    if (!userEmail) {
-      return NextResponse.json(
-        { error: 'User email not found' },
+        { error: 'User ID and email are required' },
         { status: 400 }
       );
     }
 
-    // Get the user's Stripe customer ID from the database
+    // Initialize Stripe
+    const stripeSecretKey = process.env.STRIPE_SECRET_KEY;
+    if (!stripeSecretKey) {
+      return NextResponse.json(
+        { error: 'Stripe secret key is missing' },
+        { status: 500 }
+      );
+    }
+
+    const stripe = new Stripe(stripeSecretKey, {
+      apiVersion: '2025-03-31.basil' as any,
+    });
+
+    // Use the provided userId and email directly
+    const userEmail = email;
+
+    // Check if user already has a Stripe customer ID
     const { data: userData, error: userError } = await supabase
       .from('users')
       .select('stripe_customer_id')
@@ -43,7 +45,7 @@ export async function POST(_req: Request) {
       );
     }
 
-    // If no customer ID exists, create one
+    // Create or retrieve Stripe customer
     let customerId = userData?.stripe_customer_id;
 
     if (!customerId) {
@@ -58,10 +60,15 @@ export async function POST(_req: Request) {
       customerId = customer.id;
 
       // Update user record with Stripe customer ID
-      await supabase
+      const { error: updateError } = await supabase
         .from('users')
         .update({ stripe_customer_id: customerId })
         .eq('id', userId);
+
+      if (updateError) {
+        console.error('Error updating user with Stripe customer ID:', updateError);
+        // Continue anyway as the portal can still work
+      }
     }
 
     // Create a billing portal session
@@ -73,9 +80,9 @@ export async function POST(_req: Request) {
     // Return the portal URL
     return NextResponse.json({ url: portalSession.url });
   } catch (error: any) {
-    console.error('Error creating portal session:', error.message);
+    console.error('Error creating portal session:', error);
     return NextResponse.json(
-      { error: 'Failed to create portal session' },
+      { error: error.message || 'Failed to create portal session' },
       { status: 500 }
     );
   }
