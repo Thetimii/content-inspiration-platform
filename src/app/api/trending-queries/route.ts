@@ -321,8 +321,9 @@ export async function POST(request: Request) {
         // Instead of running the worker process directly, make a separate API call to trigger it
         // This ensures the current request can complete quickly
         try {
-          // Make a non-blocking API call to trigger the analysis
-          fetch(new URL('/api/trigger-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
+          // Make a direct API call to trigger the analysis
+          // This is a blocking call to ensure it starts properly
+          const analysisResponse = await fetch(new URL('/api/direct-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -331,13 +332,19 @@ export async function POST(request: Request) {
               userId,
               videoIds: videoIdsForAnalysis
             }),
-          }).catch(error => {
-            console.error('Error triggering analysis API:', error);
           });
 
-          console.log('Video analysis for all videos triggered via separate API call');
+          if (!analysisResponse.ok) {
+            const errorData = await analysisResponse.json();
+            console.error('Error from direct-analysis API:', errorData);
+          } else {
+            const analysisData = await analysisResponse.json();
+            console.log('Direct-analysis API response:', analysisData);
+          }
+
+          console.log('Video analysis for all videos triggered via direct-analysis API');
         } catch (triggerError) {
-          console.error('Error setting up analysis trigger:', triggerError);
+          console.error('Error triggering direct-analysis API:', triggerError);
         }
       } catch (analysisError) {
         console.error('Error setting up video analysis:', analysisError);
