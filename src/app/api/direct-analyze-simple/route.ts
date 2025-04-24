@@ -116,7 +116,7 @@ Be specific and detailed in your analysis.`;
 
       // Prepare the request payload
       const requestPayload = {
-        model: "qwen/qwen2.5-vl-7b-instruct:free",
+        model: "qwen/qwen-2.5-vl-72b-instruct",
         messages: [
           {
             role: "user",
@@ -141,7 +141,7 @@ Be specific and detailed in your analysis.`;
         'Content-Type': 'application/json'
       };
 
-      console.log('Making OpenRouter API call with model: qwen/qwen2.5-vl-7b-instruct:free');
+      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
 
       const openRouterResponse = await axios.post(
