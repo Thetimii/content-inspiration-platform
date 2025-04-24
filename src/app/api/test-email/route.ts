@@ -6,7 +6,7 @@ import { supabase } from '@/utils/supabase';
 const apiKey = process.env.BREVO_API_KEY || '';
 const maskedKey = apiKey.substring(0, 10) + '...' + apiKey.substring(apiKey.length - 5);
 console.log(`Using Brevo API key: ${maskedKey}`);
-console.log(`Base URL: ${process.env.NEXT_PUBLIC_BASE_URL}`);
+console.log(`Base URL: ${process.env.NEXT_PUBLIC_APP_URL}`);
 
 /**
  * API endpoint to send a test email

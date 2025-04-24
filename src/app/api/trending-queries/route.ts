@@ -434,7 +434,7 @@ export async function POST(request: Request) {
               await new Promise(resolve => setTimeout(resolve, 2000));
 
               // Call the generate-recommendation API
-              const recommendationResponse = await fetch(new URL('/api/generate-recommendation', 'http://localhost:3001'), {
+              const recommendationResponse = await fetch(new URL('/api/generate-recommendation', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',

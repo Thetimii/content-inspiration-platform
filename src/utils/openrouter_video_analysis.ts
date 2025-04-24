@@ -8,7 +8,7 @@ import axios from 'axios';
 export async function analyzeVideoWithOpenRouter(videoUrl: string) {
   try {
     console.log(`Starting analysis of video using OpenRouter's Qwen-2.5-VL model: ${videoUrl}`);
-    
+
     // Prepare the prompt for the multimodal model
     const prompt = `Analyze this TikTok video in detail. Please provide:
 1. A comprehensive summary of what's happening in the video
@@ -45,7 +45,7 @@ Be specific and detailed in your analysis.`;
       {
         headers: {
           'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_BASE_URL || 'https://lazy-trends.vercel.app',
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         },
@@ -54,7 +54,7 @@ Be specific and detailed in your analysis.`;
     );
 
     console.log('OpenRouter response received');
-    
+
     // Extract the analysis from the response
     const analysis = response.data.choices[0]?.message?.content || 'No analysis available';
     console.log('Analysis summary:', analysis.substring(0, 100) + '...');

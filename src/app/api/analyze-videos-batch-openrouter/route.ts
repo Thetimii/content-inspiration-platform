@@ -50,7 +50,7 @@ Be specific and detailed in your analysis.`;
       {
         headers: {
           'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_BASE_URL || 'http://localhost:3000',
+          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000',
           'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         },
