@@ -83,20 +83,40 @@ export default function ApiStatusPage() {
     }
   };
 
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+
+  // Function to check if we should update the API status
+  const shouldCheckApiStatus = () => {
+    // If we haven't checked yet, we should check
+    if (!lastChecked) return true;
+
+    // If it's been more than 30 minutes since the last check, we should check again
+    const thirtyMinutesAgo = new Date();
+    thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
+    return lastChecked < thirtyMinutesAgo;
+  };
+
   useEffect(() => {
     // Check API status when the component mounts
-    // This will also trigger a background check that updates the database
     checkApiStatus();
+    setLastChecked(new Date());
 
-    // Set up an interval to check the API status every 5 minutes while the page is open
+    // Set up an interval to check the API status every 2 minutes while the page is open
     const intervalId = setInterval(() => {
-      console.log('Running periodic API status check...');
-      checkApiStatus();
-    }, 5 * 60 * 1000); // 5 minutes
+      // Only check if it's been more than 30 minutes since the last check
+      // This prevents excessive API calls but ensures the status is updated regularly
+      if (shouldCheckApiStatus()) {
+        console.log('Running periodic API status check...');
+        checkApiStatus();
+        setLastChecked(new Date());
+      } else {
+        console.log('Skipping API check - last checked less than 30 minutes ago');
+      }
+    }, 2 * 60 * 1000); // 2 minutes
 
     // Clean up the interval when the component unmounts
     return () => clearInterval(intervalId);
-  }, []);
+  }, [lastChecked]);
 
   return (
     <div className={`p-6 ${theme === 'dark' ? 'text-white' : 'text-black'}`}>
@@ -140,8 +160,13 @@ export default function ApiStatusPage() {
                   <span>Last checked: {new Date(dbApiStatus[0].last_checked).toLocaleString()}</span>
                 )}
               </div>
-              <div className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded-full">
-                Auto-updates every 6 hours
+              <div className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full flex items-center">
+                <span className="mr-1">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                </span>
+                Auto-updates while dashboard is open
               </div>
             </div>
           </div>
