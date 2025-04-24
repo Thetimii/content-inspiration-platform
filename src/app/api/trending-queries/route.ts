@@ -315,37 +315,31 @@ export async function POST(request: Request) {
 
         // We'll use the OpenRouter-based analysis instead of the video analyzer service
 
-        // We'll trigger the analysis in a separate API call
+        // Analyze each video one by one
+        console.log(`Starting analysis for ${videoIdsForAnalysis.length} videos...`);
+
+        // We'll analyze the videos in the background
         // This allows the current request to complete quickly
+        for (const videoId of videoIdsForAnalysis) {
+          try {
+            // Make a non-blocking API call to analyze each video
+            fetch(new URL('/api/simple-video-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({ videoId }),
+            }).catch(error => {
+              console.error(`Error analyzing video ${videoId}:`, error);
+            });
 
-        // Instead of running the worker process directly, make a separate API call to trigger it
-        // This ensures the current request can complete quickly
-        try {
-          // Make a direct API call to trigger the analysis
-          // This is a blocking call to ensure it starts properly
-          const analysisResponse = await fetch(new URL('/api/direct-analysis', process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3001'), {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              userId,
-              videoIds: videoIdsForAnalysis
-            }),
-          });
-
-          if (!analysisResponse.ok) {
-            const errorData = await analysisResponse.json();
-            console.error('Error from direct-analysis API:', errorData);
-          } else {
-            const analysisData = await analysisResponse.json();
-            console.log('Direct-analysis API response:', analysisData);
+            console.log(`Triggered analysis for video ${videoId}`);
+          } catch (analysisError) {
+            console.error(`Error setting up analysis for video ${videoId}:`, analysisError);
           }
-
-          console.log('Video analysis for all videos triggered via direct-analysis API');
-        } catch (triggerError) {
-          console.error('Error triggering direct-analysis API:', triggerError);
         }
+
+        console.log('All video analyses have been triggered');
       } catch (analysisError) {
         console.error('Error setting up video analysis:', analysisError);
         // Continue even if analysis triggering fails
