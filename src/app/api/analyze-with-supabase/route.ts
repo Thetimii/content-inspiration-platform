@@ -64,7 +64,7 @@ export async function POST(request: Request) {
     // Start the analysis process in the background without waiting for it to complete
     // This prevents Vercel's 10-second timeout from being triggered
     analyzeVideoInBackground(videoId, video.download_url || video.video_url);
-    
+
     // Return a response immediately
     return NextResponse.json({
       success: true,
@@ -72,10 +72,10 @@ export async function POST(request: Request) {
       video_id: videoId,
       status: 'processing'
     });
-    
+
   } catch (error: any) {
     console.error('Unexpected error in analyze-with-supabase route:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
  */
 async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
   let fileKey = '';
-  
+
   try {
     console.log(`Starting background analysis for video ${videoId}`);
     console.log(`Using video URL: ${videoUrl}`);
@@ -105,22 +105,22 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
     try {
       console.log('Checking if tiktok-videos bucket exists');
       const { data: buckets, error: listError } = await supabase.storage.listBuckets();
-      
+
       if (listError) {
         console.error('Error listing buckets:', listError);
         await updateVideoWithError(videoId, `Error listing buckets: ${listError.message}`);
         return;
       }
-      
+
       const bucket = buckets?.find(b => b.name === 'tiktok-videos');
-      
+
       if (!bucket) {
         console.log('Creating tiktok-videos bucket with public access');
         const { error: createError } = await supabase.storage.createBucket('tiktok-videos', {
           public: true,
           fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
         });
-        
+
         if (createError) {
           console.error('Error creating bucket:', createError);
           await updateVideoWithError(videoId, `Error creating bucket: ${createError.message}`);
@@ -132,7 +132,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
           public: true,
           fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
         });
-        
+
         if (updateError) {
           console.error('Error updating bucket to public:', updateError);
           await updateVideoWithError(videoId, `Error updating bucket: ${updateError.message}`);
@@ -156,7 +156,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
         },
         timeout: 60000 // 60 second timeout for download
       });
-      
+
       videoBuffer = response.data;
       console.log(`Video file downloaded, size: ${videoBuffer.byteLength} bytes`);
     } catch (downloadError: any) {
@@ -164,18 +164,18 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
       await updateVideoWithError(videoId, `Error downloading video file: ${downloadError.message}`);
       return;
     }
-    
+
     if (!videoBuffer || videoBuffer.byteLength === 0) {
       console.error('Downloaded video file is empty');
       await updateVideoWithError(videoId, 'Downloaded video file is empty');
       return;
     }
-    
+
     // Step 3: Upload the video to Supabase storage
     try {
       fileKey = `videos/${videoId}-${Date.now()}.mp4`;
       console.log(`Uploading video to Supabase storage: ${fileKey}`);
-      
+
       const { error: uploadError } = await supabase.storage
         .from('tiktok-videos')
         .upload(fileKey, videoBuffer, {
@@ -183,7 +183,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
           cacheControl: '3600',
           upsert: true
         });
-      
+
       if (uploadError) {
         console.error(`Error uploading video to Supabase storage:`, uploadError);
         await updateVideoWithError(videoId, `Error uploading video: ${uploadError.message}`);
@@ -194,7 +194,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
       await updateVideoWithError(videoId, `Unexpected error uploading file: ${uploadError.message}`);
       return;
     }
-    
+
     // Step 4: Get the public URL of the video
     let publicVideoUrl = '';
     try {
@@ -202,22 +202,22 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
       const { data: publicUrlData, error: urlError } = supabase.storage
         .from('tiktok-videos')
         .getPublicUrl(fileKey);
-      
+
       if (urlError) {
         console.error('Error getting public URL:', urlError);
         await updateVideoWithError(videoId, `Error getting public URL: ${urlError.message}`);
         return;
       }
-      
+
       if (!publicUrlData || !publicUrlData.publicUrl) {
         console.error('No public URL returned from Supabase');
         await updateVideoWithError(videoId, 'No public URL returned from Supabase');
         return;
       }
-      
+
       publicVideoUrl = publicUrlData.publicUrl;
       console.log(`Public URL for video: ${publicVideoUrl}`);
-  
+
       // Step 5: Verify the public URL is accessible
       try {
         console.log('Verifying public URL is accessible');
@@ -238,7 +238,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
     // Step 6: Call OpenRouter API to analyze the video
     try {
       console.log(`Calling OpenRouter API for video ${videoId}`);
-      
+
       // Prepare the prompt for video analysis
       const prompt = `Analyze this TikTok video in detail. Please provide:
 1. A comprehensive summary of what's happening in the video
@@ -248,23 +248,21 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
 5. What makes this content engaging or trending
 
 Be specific and detailed in your analysis.`;
-      
-      // Prepare the request payload
+
+      // Prepare the request payload with video_url content type
       const requestPayload = {
         model: "qwen/qwen-2.5-vl-72b-instruct",
         messages: [
           {
             role: "user",
             content: [
-              { 
-                type: "text", 
-                text: prompt 
+              {
+                type: "text",
+                text: prompt
               },
-              { 
-                type: "image_url", 
-                image_url: { 
-                  url: publicVideoUrl 
-                } 
+              {
+                type: "video_url",
+                url: publicVideoUrl
               }
             ]
           }
@@ -272,7 +270,7 @@ Be specific and detailed in your analysis.`;
         max_tokens: 4000,
         temperature: 0.7
       };
-      
+
       // Prepare the headers
       const headers = {
         'Authorization': `Bearer ${openRouterApiKey.trim()}`,
@@ -280,10 +278,10 @@ Be specific and detailed in your analysis.`;
         'X-Title': 'Lazy Trends',
         'Content-Type': 'application/json'
       };
-      
-      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using image_url format');
+
+      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using video_url format');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
-      
+
       const openRouterResponse = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         requestPayload,
@@ -292,42 +290,42 @@ Be specific and detailed in your analysis.`;
           timeout: 120000 // 2 minute timeout
         }
       );
-      
+
       console.log('OpenRouter API response received');
       console.log('Response status:', openRouterResponse.status);
-      
+
       // Extract the analysis from the response
       const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
-      
+
       // Log the extracted analysis
       console.log('Extracted analysis:', analysis ? (analysis.length > 100 ? analysis.substring(0, 100) + '...' : analysis) : 'null');
-      
+
       if (!analysis || analysis.length < 10) {
         console.error('Empty or too short analysis received');
         await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
         return;
       }
-      
+
       console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
-      
+
       // Step 7: Update the video with the analysis
       const updateData = {
         frame_analysis: analysis,
         summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
         last_analyzed_at: new Date().toISOString()
       };
-      
+
       const { error: updateError } = await supabase
         .from('tiktok_videos')
         .update(updateData)
         .eq('id', videoId);
-      
+
       if (updateError) {
         console.error('Error updating video with analysis:', updateError);
         await updateVideoWithError(videoId, `Error updating video: ${updateError.message}`);
         return;
       }
-      
+
       console.log(`Successfully updated video ${videoId} with analysis`);
     } catch (analysisError: any) {
       console.error('Error analyzing video with OpenRouter:', analysisError);
@@ -336,7 +334,7 @@ Be specific and detailed in your analysis.`;
         status: analysisError.response?.status,
         data: analysisError.response?.data
       });
-      
+
       await updateVideoWithError(videoId, `Error analyzing video: ${analysisError.message || 'Unknown error'}`);
     }
   } catch (error: any) {
@@ -350,7 +348,7 @@ Be specific and detailed in your analysis.`;
         const { error: deleteError } = await supabase.storage
           .from('tiktok-videos')
           .remove([fileKey]);
-        
+
         if (deleteError) {
           console.error(`Error deleting temporary file: ${deleteError.message}`);
         } else {
@@ -375,7 +373,7 @@ async function updateVideoWithError(videoId: string, errorMessage: string) {
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId);
-    
+
     console.log(`Updated video ${videoId} with error message`);
   } catch (error: any) {
     console.error('Error updating video with error message:', error);
