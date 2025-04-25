@@ -18,6 +18,9 @@ export async function POST(request: Request) {
 
     console.log(`Checking analysis status for video ${videoId}`);
 
+    // Check if there's an active analysis in progress in the direct-analyze-simple logs
+    // This is a workaround to see if the analysis is actually happening
+
     // Get the video from the database
     const { data: video, error: videoError } = await supabase
       .from('tiktok_videos')
@@ -41,13 +44,25 @@ export async function POST(request: Request) {
     }
 
     // Check if analysis is complete
-    const isAnalysisComplete = video.frame_analysis && 
+    const isAnalysisComplete = video.frame_analysis &&
                               video.frame_analysis !== 'Analysis in progress...' &&
                               !video.frame_analysis.startsWith('Analysis failed:');
-    
+
     // Check if analysis failed
-    const isAnalysisFailed = video.frame_analysis && 
+    const isAnalysisFailed = video.frame_analysis &&
                             video.frame_analysis.startsWith('Analysis failed:');
+
+    // Log the current state of the analysis
+    console.log(`Video ${videoId} analysis status:`, {
+      frame_analysis: video.frame_analysis ?
+        (video.frame_analysis.length > 100 ?
+          video.frame_analysis.substring(0, 100) + '...' :
+          video.frame_analysis) :
+        'null',
+      last_analyzed_at: video.last_analyzed_at,
+      isAnalysisComplete,
+      isAnalysisFailed
+    });
 
     // Return the status
     return NextResponse.json({
@@ -57,10 +72,10 @@ export async function POST(request: Request) {
       error: isAnalysisFailed ? video.frame_analysis.replace('Analysis failed: ', '') : null,
       lastUpdated: video.last_analyzed_at
     });
-    
+
   } catch (error: any) {
     console.error('Unexpected error in analysis-status route:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
