@@ -249,7 +249,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
 
 Be specific and detailed in your analysis.`;
 
-      // Use Qwen model with the correct format for OpenRouter
+      // Use Qwen model with the EXACT format required for video_url
       const requestPayload = {
         model: "qwen/qwen-2.5-vl-72b-instruct",
         messages: [
@@ -257,14 +257,14 @@ Be specific and detailed in your analysis.`;
             role: "user",
             content: [
               {
-                type: "text",
-                text: prompt
-              },
-              {
-                type: "image_url",
-                image_url: {
+                type: "video_url",
+                video_url: {
                   url: publicVideoUrl
                 }
+              },
+              {
+                type: "text",
+                text: prompt
               }
             ]
           }
@@ -281,7 +281,7 @@ Be specific and detailed in your analysis.`;
         'Content-Type': 'application/json'
       };
 
-      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using image_url format');
+      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using EXACT video_url format');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
       console.log('Headers:', JSON.stringify(headers, null, 2));
 
@@ -323,14 +323,14 @@ Be specific and detailed in your analysis.`;
                 role: "user",
                 content: [
                   {
-                    type: "text",
-                    text: prompt
-                  },
-                  {
                     type: "image_url",
                     image_url: {
                       url: publicVideoUrl
                     }
+                  },
+                  {
+                    type: "text",
+                    text: prompt
                   }
                 ]
               }
