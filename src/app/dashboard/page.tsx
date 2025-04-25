@@ -584,6 +584,24 @@ export default function Dashboard() {
     }
   };
 
+  // Function to handle analysis completion
+  const handleAnalysisComplete = (videoId: string, analysis: string) => {
+    console.log(`Analysis complete for video ${videoId}`);
+
+    // Update the videos state with the updated analysis
+    setVideos(prev => {
+      return prev.map(v => {
+        if (v.id === videoId) {
+          return {
+            ...v,
+            frame_analysis: analysis
+          };
+        }
+        return v;
+      });
+    });
+  };
+
   // Function to generate a recommendation for a query
   const generateRecommendationForQuery = async (queryId: string) => {
     try {
