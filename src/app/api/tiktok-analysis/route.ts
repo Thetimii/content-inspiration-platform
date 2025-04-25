@@ -355,14 +355,34 @@ Be specific and detailed in your analysis.`;
       let analysis = '';
       try {
         console.log('[TIKTOK-ANALYSIS] Sending request to DashScope API...');
-        const dashscopeResponse = await axios.post(
+
+        // Set a shorter timeout for debugging
+        const timeout = 30000; // 30 seconds
+        console.log(`[TIKTOK-ANALYSIS] Setting timeout to ${timeout}ms`);
+
+        // Create a timeout promise
+        const timeoutPromise = new Promise((_, reject) => {
+          setTimeout(() => {
+            reject(new Error(`DashScope API request timed out after ${timeout}ms`));
+          }, timeout);
+        });
+
+        // Create the API request promise
+        const apiRequestPromise = axios.post(
           'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
           requestPayload,
           {
             headers,
-            timeout: 120000 // 2 minute timeout
+            // Don't set axios timeout, we'll handle it ourselves
           }
         );
+
+        // Race the promises
+        console.log('[TIKTOK-ANALYSIS] Starting race between API request and timeout');
+        const dashscopeResponse = await Promise.race([
+          apiRequestPromise,
+          timeoutPromise
+        ]) as any;
 
         console.log('[TIKTOK-ANALYSIS] DashScope API response received');
         console.log('[TIKTOK-ANALYSIS] Response status:', dashscopeResponse.status);
@@ -465,8 +485,82 @@ Be specific and detailed in your analysis.`;
 
       if (!analysis || analysis.length < 10) {
         console.error('[TIKTOK-ANALYSIS] Empty or too short analysis received');
-        await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
-        return;
+
+        // Try a simpler approach - just extract a frame and describe it
+        try {
+          console.log('[TIKTOK-ANALYSIS] Trying a simpler approach - using a basic prompt');
+
+          // Use a simpler prompt
+          const simplePrompt = {
+            model: "qwen-vl-plus", // Use a smaller model
+            messages: [
+              {
+                role: "system",
+                content: [
+                  {
+                    type: "text",
+                    text: "You are a helpful assistant that describes TikTok videos."
+                  }
+                ]
+              },
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "video_url",
+                    video_url: {
+                      url: publicVideoUrl
+                    }
+                  },
+                  {
+                    type: "text",
+                    text: "Please describe what you see in this video in a few sentences."
+                  }
+                ]
+              }
+            ],
+            max_tokens: 1024,
+            temperature: 0.7
+          };
+
+          console.log('[TIKTOK-ANALYSIS] Making simple DashScope API call');
+
+          // Set a shorter timeout for the simple approach
+          const simpleTimeout = 20000; // 20 seconds
+
+          // Create a timeout promise
+          const simpleTimeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => {
+              reject(new Error(`Simple DashScope API request timed out after ${simpleTimeout}ms`));
+            }, simpleTimeout);
+          });
+
+          // Create the API request promise
+          const simpleApiRequestPromise = axios.post(
+            'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+            simplePrompt,
+            { headers }
+          );
+
+          // Race the promises
+          const simpleResponse = await Promise.race([
+            simpleApiRequestPromise,
+            simpleTimeoutPromise
+          ]) as any;
+
+          const simpleAnalysis = simpleResponse.data?.choices?.[0]?.message?.content || '';
+
+          if (simpleAnalysis && simpleAnalysis.length > 10) {
+            console.log('[TIKTOK-ANALYSIS] Simple analysis received:', simpleAnalysis.substring(0, 100) + '...');
+            analysis = `Simple analysis (limited due to video processing constraints):\n\n${simpleAnalysis}`;
+          } else {
+            throw new Error('Simple analysis also failed');
+          }
+        } catch (simpleError: any) {
+          console.error('[TIKTOK-ANALYSIS] Simple approach also failed:', simpleError.message);
+          await updateVideoWithError(videoId, 'Multiple analysis attempts failed. The video may be too complex or too long.');
+          return;
+        }
       }
 
       console.log(`[TIKTOK-ANALYSIS] Analysis received for video ${videoId}, length: ${analysis.length} characters`);
