@@ -33,88 +33,135 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
   const isAnalysisComplete = analysis && analysis !== 'Analysis in progress...';
   const isAnalysisFailed = analysis && analysis.startsWith('Analysis failed:');
 
-  // Start streaming analysis
-  const startStreamingAnalysis = async () => {
+  // Start polling for analysis status
+  const startPollingAnalysis = async () => {
     try {
       setIsAnalyzing(true);
       setAnalysisStatus('starting');
       setStreamMessages([]);
 
-      // Create a new event source
-      const response = await fetch('/api/stream-analysis', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          videoId: video.id
-        }),
-      });
+      // Add initial message
+      setStreamMessages(prev => [...prev, {
+        type: 'progress',
+        message: 'Starting analysis...',
+        timestamp: new Date().toISOString(),
+        attempts: 1
+      }]);
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to start analysis stream');
-      }
+      // Start polling
+      let attempts = 0;
+      const maxAttempts = 60; // 5 minutes (5 seconds * 60)
+      const pollInterval = 5000; // 5 seconds
 
-      // Get the response body as a readable stream
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error('Failed to get stream reader');
-      }
+      const checkStatus = async () => {
+        attempts++;
 
-      // Read the stream
-      const decoder = new TextDecoder();
-      let buffer = '';
+        try {
+          const response = await fetch('/api/check-analysis', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              videoId: video.id
+            }),
+          });
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // Process complete SSE messages
-        const lines = buffer.split('\n\n');
-        buffer = lines.pop() || '';
-
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.substring(6));
-              setStreamMessages(prev => [...prev, data]);
-
-              // Update status based on message type
-              if (data.type === 'complete') {
-                setAnalysis(data.analysis);
-                setAnalysisStatus('complete');
-                setIsAnalyzing(false);
-                if (onAnalysisComplete) {
-                  onAnalysisComplete(video.id, data.analysis);
-                }
-                console.log('Analysis complete!');
-              } else if (data.type === 'failed') {
-                setAnalysis(data.message);
-                setAnalysisStatus('failed');
-                setIsAnalyzing(false);
-                console.error('Analysis failed');
-              } else if (data.type === 'timeout') {
-                setAnalysisStatus('timeout');
-                setIsAnalyzing(false);
-                console.error('Analysis timed out');
-              } else if (data.type === 'error') {
-                setAnalysisStatus('error');
-                setIsAnalyzing(false);
-                console.error(`Error: ${data.message}`);
-              } else if (data.type === 'progress') {
-                setAnalysisStatus('in-progress');
-              }
-            } catch (e) {
-              console.error('Error parsing SSE message:', e);
-            }
+          if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to check analysis status');
           }
+
+          const data = await response.json();
+
+          // Add message to stream
+          setStreamMessages(prev => [...prev, {
+            type: 'progress',
+            message: `Checking analysis status (attempt ${attempts})...`,
+            timestamp: new Date().toISOString(),
+            attempts
+          }]);
+
+          // Check if analysis is complete
+          if (data.isAnalysisComplete && !data.isAnalysisFailed) {
+            setAnalysis(data.frame_analysis);
+            setAnalysisStatus('complete');
+            setIsAnalyzing(false);
+
+            setStreamMessages(prev => [...prev, {
+              type: 'complete',
+              message: 'Analysis complete!',
+              timestamp: new Date().toISOString()
+            }]);
+
+            if (onAnalysisComplete) {
+              onAnalysisComplete(video.id, data.frame_analysis);
+            }
+
+            console.log('Analysis complete!');
+            return;
+          }
+
+          // Check if analysis failed
+          if (data.isAnalysisFailed || data.isAnalysisStuck) {
+            setAnalysis(data.frame_analysis);
+            setAnalysisStatus('failed');
+            setIsAnalyzing(false);
+
+            setStreamMessages(prev => [...prev, {
+              type: 'failed',
+              message: data.frame_analysis || 'Analysis failed',
+              timestamp: new Date().toISOString()
+            }]);
+
+            console.error('Analysis failed:', data.frame_analysis);
+            return;
+          }
+
+          // If we've reached the maximum number of attempts, consider it timed out
+          if (attempts >= maxAttempts) {
+            setAnalysisStatus('timeout');
+            setIsAnalyzing(false);
+
+            setStreamMessages(prev => [...prev, {
+              type: 'timeout',
+              message: 'Analysis timed out after 5 minutes',
+              timestamp: new Date().toISOString()
+            }]);
+
+            console.error('Analysis timed out');
+            return;
+          }
+
+          // Continue polling
+          setTimeout(checkStatus, pollInterval);
+        } catch (error: any) {
+          console.error('Error checking analysis status:', error);
+
+          // If there's an error, we'll try again unless we've reached the maximum number of attempts
+          if (attempts >= maxAttempts) {
+            setAnalysisStatus('error');
+            setIsAnalyzing(false);
+
+            setStreamMessages(prev => [...prev, {
+              type: 'error',
+              message: `Error: ${error.message || 'Failed to check analysis status'}`,
+              timestamp: new Date().toISOString()
+            }]);
+
+            console.error(`Error: ${error.message || 'Failed to check analysis status'}`);
+            return;
+          }
+
+          // Continue polling despite the error
+          setTimeout(checkStatus, pollInterval);
         }
-      }
+      };
+
+      // Start checking status
+      setTimeout(checkStatus, 2000); // Wait 2 seconds before first check
     } catch (error: any) {
-      console.error('Error starting analysis stream:', error);
+      console.error('Error starting analysis polling:', error);
       setAnalysisStatus('error');
       setIsAnalyzing(false);
       console.error(`Error: ${error.message || 'Failed to analyze video'}`);
@@ -144,13 +191,13 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
         throw new Error(errorData.error || 'Failed to start analysis');
       }
 
-      // Then start streaming the results
-      startStreamingAnalysis();
+      // Then start polling for results
+      startPollingAnalysis();
     } catch (error: any) {
       console.error('Error analyzing video:', error);
       setAnalysisStatus('error');
       setIsAnalyzing(false);
-      toast.error(`Error: ${error.message || 'Failed to analyze video'}`);
+      console.error(`Error: ${error.message || 'Failed to analyze video'}`);
     }
   };
 
