@@ -19,12 +19,12 @@ export async function POST(request: Request) {
 
     console.log('Generating trending queries for:', businessDescription);
 
-    // Check if API key is available
-    const apiKey = process.env.OPENROUTER_API_KEY;
+    // Check if DashScope API key is available
+    const apiKey = process.env.DASHSCOPE_API_KEY;
     if (!apiKey) {
-      console.error('OpenRouter API key is missing');
+      console.error('DashScope API key is missing');
       return NextResponse.json(
-        { error: 'OpenRouter API key is missing. Please add it to your environment variables.' },
+        { error: 'DashScope API key is missing. Please add it to your environment variables.' },
         { status: 500 }
       );
     }
@@ -32,27 +32,43 @@ export async function POST(request: Request) {
     // Sanitize the API key - remove any whitespace or invalid characters
     const sanitizedApiKey = apiKey.trim();
 
-    // Make the API call to OpenRouter
+    console.log('DashScope API key available:', apiKey ? 'Yes' : 'No');
+    console.log('DashScope API key length:', apiKey?.length || 0);
+
+    // Log the first few characters of the API key for debugging (don't log the full key)
+    if (apiKey.length > 8) {
+      console.log('DashScope API key prefix:', apiKey.substring(0, 4) + '...' + apiKey.substring(apiKey.length - 4));
+    }
+
+    // Make the API call to DashScope
     const response = await axios.post(
-      'https://openrouter.ai/api/v1/chat/completions',
+      'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
       {
-        model: 'google/gemma-3-4b-it:free',
+        model: 'qwen-max', // Using Qwen text model for generating trending queries
         messages: [
           {
             role: 'system',
-            content: 'You are a TikTok trend expert. Respond with EXACTLY 5 trending search terms related to the business. ONLY provide the 5 keywords/phrases, one per line, numbered 1-5. NO explanations, NO descriptions, NO additional text. ONLY the 5 search terms. Example format:\n1. keyword1\n2. keyword2\n3. keyword3\n4. keyword4\n5. keyword5'
+            content: [
+              {
+                type: "text",
+                text: 'You are a TikTok trend expert. Respond with EXACTLY 5 trending search terms related to the business. ONLY provide the 5 keywords/phrases, one per line, numbered 1-5. NO explanations, NO descriptions, NO additional text. ONLY the 5 search terms. Example format:\n1. keyword1\n2. keyword2\n3. keyword3\n4. keyword4\n5. keyword5'
+              }
+            ]
           },
           {
             role: 'user',
-            content: businessDescription
+            content: [
+              {
+                type: "text",
+                text: businessDescription
+              }
+            ]
           }
         ]
       },
       {
         headers: {
           'Authorization': `Bearer ${sanitizedApiKey}`,
-          'HTTP-Referer': process.env.NEXT_PUBLIC_APP_URL || 'https://lazy-trends.vercel.app',
-          'X-Title': 'Lazy Trends',
           'Content-Type': 'application/json'
         }
       }
@@ -60,7 +76,7 @@ export async function POST(request: Request) {
 
     // Extract and parse the search queries from the response
     const content = response.data?.choices?.[0]?.message?.content || '';
-    console.log('OpenRouter API response content:', content);
+    console.log('DashScope API response content:', content);
 
     // Split by newlines and extract only the keywords
     const queries = content
