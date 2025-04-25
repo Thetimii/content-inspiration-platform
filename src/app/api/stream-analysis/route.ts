@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/utils/supabase';
-import { StreamingTextResponse } from 'ai';
 
 /**
  * API endpoint to stream video analysis results
@@ -19,13 +18,16 @@ export async function POST(request: Request) {
 
     console.log(`[STREAM-ANALYSIS] Starting stream for video ${videoId}`);
 
+    // Create a TextEncoder to convert strings to Uint8Arrays
+    const encoder = new TextEncoder();
+
     // Create a stream
     const stream = new ReadableStream({
       async start(controller) {
         let analysisComplete = false;
         let attempts = 0;
         const maxAttempts = 60; // 5 minutes (5 seconds * 60)
-        
+
         // Send initial message
         const initialMessage = {
           type: 'status',
@@ -33,19 +35,19 @@ export async function POST(request: Request) {
           timestamp: new Date().toISOString()
         };
         controller.enqueue(encoder.encode(`data: ${JSON.stringify(initialMessage)}\n\n`));
-        
+
         // Function to check analysis status
         const checkAnalysis = async () => {
           try {
             attempts++;
-            
+
             // Get the video from the database
             const { data: video, error: videoError } = await supabase
               .from('tiktok_videos')
               .select('id, frame_analysis, last_analyzed_at')
               .eq('id', videoId)
               .single();
-            
+
             if (videoError) {
               const errorMessage = {
                 type: 'error',
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
               controller.close();
               return;
             }
-            
+
             if (!video) {
               const errorMessage = {
                 type: 'error',
@@ -67,7 +69,7 @@ export async function POST(request: Request) {
               controller.close();
               return;
             }
-            
+
             // Check if analysis is complete
             if (video.frame_analysis && video.frame_analysis !== 'Analysis in progress...') {
               // Analysis is complete
@@ -81,7 +83,7 @@ export async function POST(request: Request) {
               controller.close();
               return;
             }
-            
+
             // Check if analysis failed
             if (video.frame_analysis && video.frame_analysis.startsWith('Analysis failed:')) {
               // Analysis failed
@@ -95,7 +97,7 @@ export async function POST(request: Request) {
               controller.close();
               return;
             }
-            
+
             // Analysis is still in progress
             const progressMessage = {
               type: 'progress',
@@ -104,7 +106,7 @@ export async function POST(request: Request) {
               attempts
             };
             controller.enqueue(encoder.encode(`data: ${JSON.stringify(progressMessage)}\n\n`));
-            
+
             // Check if we've reached the maximum number of attempts
             if (attempts >= maxAttempts) {
               const timeoutMessage = {
@@ -116,7 +118,7 @@ export async function POST(request: Request) {
               controller.close();
               return;
             }
-            
+
             // Continue checking if analysis is not complete
             if (!analysisComplete) {
               setTimeout(checkAnalysis, 5000); // Check every 5 seconds
@@ -131,21 +133,24 @@ export async function POST(request: Request) {
             controller.close();
           }
         };
-        
+
         // Start checking analysis
         await checkAnalysis();
       }
     });
-    
-    // Create a TextEncoder to convert strings to Uint8Arrays
-    const encoder = new TextEncoder();
-    
-    // Return the stream as a Server-Sent Events response
-    return new StreamingTextResponse(stream);
-    
+
+    // Create a custom response with the appropriate headers for SSE
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    });
+
   } catch (error: any) {
     console.error('[STREAM-ANALYSIS] Unexpected error:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
