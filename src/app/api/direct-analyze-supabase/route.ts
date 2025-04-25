@@ -285,6 +285,7 @@ Be specific and detailed in your analysis.`;
         console.log(`Calling OpenRouter API for video ${videoId}`);
 
         // Prepare the request payload with video_url content type
+        // Using the exact format required by OpenRouter for video analysis
         const requestPayload = {
           model: "qwen/qwen-2.5-vl-72b-instruct",
           messages: [
@@ -292,16 +293,20 @@ Be specific and detailed in your analysis.`;
               role: "user",
               content: [
                 {
-                  type: "video_url",
-                  url: publicVideoUrl
-                },
-                {
                   type: "text",
                   text: prompt
+                },
+                {
+                  type: "image_url",
+                  image_url: {
+                    url: publicVideoUrl
+                  }
                 }
               ]
             }
-          ]
+          ],
+          max_tokens: 4000,
+          temperature: 0.7
         };
 
         // Prepare the headers
@@ -312,7 +317,7 @@ Be specific and detailed in your analysis.`;
           'Content-Type': 'application/json'
         };
 
-        console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct');
+        console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using image_url format');
         console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
 
         const openRouterResponse = await axios.post(
