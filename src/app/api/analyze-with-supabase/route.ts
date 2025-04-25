@@ -249,7 +249,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
 
 Be specific and detailed in your analysis.`;
 
-      // Prepare the request payload with video_url content type
+      // Use Qwen model with the correct format for OpenRouter
       const requestPayload = {
         model: "qwen/qwen-2.5-vl-72b-instruct",
         messages: [
@@ -261,8 +261,10 @@ Be specific and detailed in your analysis.`;
                 text: prompt
               },
               {
-                type: "video_url",
-                url: publicVideoUrl
+                type: "image_url",
+                image_url: {
+                  url: publicVideoUrl
+                }
               }
             ]
           }
@@ -279,23 +281,92 @@ Be specific and detailed in your analysis.`;
         'Content-Type': 'application/json'
       };
 
-      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using video_url format');
+      console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct using image_url format');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
+      console.log('Headers:', JSON.stringify(headers, null, 2));
 
-      const openRouterResponse = await axios.post(
-        'https://openrouter.ai/api/v1/chat/completions',
-        requestPayload,
-        {
-          headers,
-          timeout: 120000 // 2 minute timeout
+      let analysis = '';
+      try {
+        console.log('Sending request to OpenRouter API...');
+        const openRouterResponse = await axios.post(
+          'https://openrouter.ai/api/v1/chat/completions',
+          requestPayload,
+          {
+            headers,
+            timeout: 120000 // 2 minute timeout
+          }
+        );
+
+        console.log('OpenRouter API response received');
+        console.log('Response status:', openRouterResponse.status);
+        console.log('Response headers:', JSON.stringify(openRouterResponse.headers, null, 2));
+        console.log('Response data:', JSON.stringify(openRouterResponse.data, null, 2));
+
+        // Extract the analysis from the response
+        analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
+      } catch (apiError: any) {
+        console.error('Error calling OpenRouter API with Qwen model:', apiError.message);
+        console.error('Error details:', {
+          status: apiError.response?.status,
+          statusText: apiError.response?.statusText,
+          data: apiError.response?.data,
+          headers: apiError.response?.headers
+        });
+
+        // Try with Claude model as a fallback
+        console.log('Trying fallback with Claude model...');
+        try {
+          const fallbackPayload = {
+            model: "anthropic/claude-3-opus-20240229",
+            messages: [
+              {
+                role: "user",
+                content: [
+                  {
+                    type: "text",
+                    text: prompt
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: publicVideoUrl
+                    }
+                  }
+                ]
+              }
+            ],
+            max_tokens: 4000,
+            temperature: 0.7
+          };
+
+          console.log('Making fallback OpenRouter API call with model: anthropic/claude-3-opus-20240229');
+          console.log('Fallback payload:', JSON.stringify(fallbackPayload, null, 2));
+
+          const fallbackResponse = await axios.post(
+            'https://openrouter.ai/api/v1/chat/completions',
+            fallbackPayload,
+            {
+              headers,
+              timeout: 120000 // 2 minute timeout
+            }
+          );
+
+          console.log('Fallback OpenRouter API response received');
+          console.log('Fallback response status:', fallbackResponse.status);
+          console.log('Fallback response data:', JSON.stringify(fallbackResponse.data, null, 2));
+
+          // Extract the analysis from the fallback response
+          analysis = fallbackResponse.data?.choices?.[0]?.message?.content || '';
+        } catch (fallbackError: any) {
+          console.error('Error calling fallback OpenRouter API with Claude model:', fallbackError.message);
+          console.error('Fallback error details:', {
+            status: fallbackError.response?.status,
+            statusText: fallbackError.response?.statusText,
+            data: fallbackError.response?.data
+          });
+          throw fallbackError; // Re-throw to be caught by the outer try/catch
         }
-      );
-
-      console.log('OpenRouter API response received');
-      console.log('Response status:', openRouterResponse.status);
-
-      // Extract the analysis from the response
-      const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
+      }
 
       // Log the extracted analysis
       console.log('Extracted analysis:', analysis ? (analysis.length > 100 ? analysis.substring(0, 100) + '...' : analysis) : 'null');
