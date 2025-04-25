@@ -452,7 +452,7 @@ export default function Dashboard() {
 
       console.log(`Analyzing video ID: ${videoId}`);
 
-      const response = await fetch('/api/direct-analyze-supabase', {
+      const response = await fetch('/api/analyze-with-supabase', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -526,7 +526,7 @@ export default function Dashboard() {
 
           console.log(`Analyzing video ID: ${video.id}`);
 
-          const response = await fetch('/api/direct-analyze-supabase', {
+          const response = await fetch('/api/analyze-with-supabase', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
