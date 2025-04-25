@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     // Start the analysis process in the background without waiting for it to complete
     // This prevents Vercel's 10-second timeout from being triggered
     analyzeVideoInBackground(videoId, video.download_url || video.video_url);
-    
+
     // Return a response immediately
     return NextResponse.json({
       success: true,
@@ -73,10 +73,10 @@ export async function POST(request: Request) {
       video_id: videoId,
       status: 'processing'
     });
-    
+
   } catch (error: any) {
     console.error('Unexpected error in direct-analyze-supabase route:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
  */
 async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
   let fileKey = '';
-  
+
   try {
     console.log(`Starting background analysis for video ${videoId}`);
     console.log(`Using video URL: ${videoUrl}`);
@@ -105,41 +105,66 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
 
     // Step 1: Ensure the bucket exists and is public
     console.log('Checking if tiktok-videos bucket exists and is public');
-    
-    // Check if bucket exists
-    const { data: buckets } = await supabase.storage.listBuckets();
-    const bucket = buckets?.find(b => b.name === 'tiktok-videos');
-    
-    if (!bucket) {
-      console.log('Creating tiktok-videos bucket with public access');
-      const { error: createError } = await supabase.storage.createBucket('tiktok-videos', {
-        public: true
-      });
-      
-      if (createError) {
-        console.error('Error creating bucket:', createError);
-        await updateVideoWithError(videoId, `Error creating bucket: ${createError.message}`);
+
+    try {
+      // Check if bucket exists
+      console.log('Listing buckets...');
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+
+      if (listError) {
+        console.error('Error listing buckets:', listError);
+        await updateVideoWithError(videoId, `Error listing buckets: ${listError.message}`);
         return;
       }
-    } else if (!bucket.public) {
-      console.log('Updating tiktok-videos bucket to be public');
-      const { error: updateError } = await supabase.storage.updateBucket('tiktok-videos', {
-        public: true
-      });
-      
-      if (updateError) {
-        console.error('Error updating bucket to public:', updateError);
-        await updateVideoWithError(videoId, `Error updating bucket: ${updateError.message}`);
-        return;
+
+      console.log('Buckets found:', buckets?.map(b => b.name).join(', ') || 'none');
+      const bucket = buckets?.find(b => b.name === 'tiktok-videos');
+
+      if (!bucket) {
+        console.log('Creating tiktok-videos bucket with public access');
+        const { error: createError } = await supabase.storage.createBucket('tiktok-videos', {
+          public: true,
+          fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+        });
+
+        if (createError) {
+          console.error('Error creating bucket:', createError);
+          await updateVideoWithError(videoId, `Error creating bucket: ${createError.message}`);
+          return;
+        }
+
+        console.log('Successfully created tiktok-videos bucket');
+      } else {
+        console.log('Bucket found:', bucket);
+
+        if (!bucket.public) {
+          console.log('Updating tiktok-videos bucket to be public');
+          const { error: updateError } = await supabase.storage.updateBucket('tiktok-videos', {
+            public: true,
+            fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+          });
+
+          if (updateError) {
+            console.error('Error updating bucket to public:', updateError);
+            await updateVideoWithError(videoId, `Error updating bucket: ${updateError.message}`);
+            return;
+          }
+
+          console.log('Successfully updated tiktok-videos bucket to public');
+        } else {
+          console.log('tiktok-videos bucket already exists and is public');
+        }
       }
-    } else {
-      console.log('tiktok-videos bucket already exists and is public');
+    } catch (bucketError: any) {
+      console.error('Unexpected error managing bucket:', bucketError);
+      await updateVideoWithError(videoId, `Unexpected error managing bucket: ${bucketError.message}`);
+      return;
     }
 
     // Step 2: Download the video file
     console.log(`Downloading video file from ${videoUrl}`);
     let videoBuffer;
-    
+
     try {
       const response = await axios.get(videoUrl, {
         responseType: 'arraybuffer',
@@ -148,7 +173,7 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
         },
         timeout: 60000 // 60 second timeout for download
       });
-      
+
       videoBuffer = response.data;
       console.log(`Video file downloaded, size: ${videoBuffer.byteLength} bytes`);
     } catch (downloadError: any) {
@@ -156,48 +181,126 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
       await updateVideoWithError(videoId, `Error downloading video file: ${downloadError.message}`);
       return;
     }
-    
+
     if (!videoBuffer || videoBuffer.byteLength === 0) {
       console.error('Downloaded video file is empty');
       await updateVideoWithError(videoId, 'Downloaded video file is empty');
       return;
     }
-    
+
     // Step 3: Upload the video to Supabase storage
     fileKey = `videos/${videoId}-${Date.now()}.mp4`;
     console.log(`Uploading video to Supabase storage: ${fileKey}`);
-    
-    const { error: uploadError } = await supabase.storage
-      .from('tiktok-videos')
-      .upload(fileKey, videoBuffer, {
-        contentType: 'video/mp4',
-        cacheControl: '3600'
-      });
-    
-    if (uploadError) {
-      console.error(`Error uploading video to Supabase storage: ${uploadError.message}`);
-      await updateVideoWithError(videoId, `Error uploading video: ${uploadError.message}`);
+
+    try {
+      // First, check if the file already exists and remove it
+      console.log(`Checking if file ${fileKey} already exists...`);
+      const { data: existingFiles } = await supabase.storage
+        .from('tiktok-videos')
+        .list('videos', {
+          search: videoId
+        });
+
+      if (existingFiles && existingFiles.length > 0) {
+        console.log(`Found ${existingFiles.length} existing files with this video ID`);
+        const filesToRemove = existingFiles.map(file => `videos/${file.name}`);
+
+        console.log(`Removing existing files: ${filesToRemove.join(', ')}`);
+        await supabase.storage
+          .from('tiktok-videos')
+          .remove(filesToRemove);
+
+        console.log('Existing files removed');
+      }
+
+      // Now upload the new file
+      console.log(`Uploading ${videoBuffer.byteLength} bytes to ${fileKey}...`);
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('tiktok-videos')
+        .upload(fileKey, videoBuffer, {
+          contentType: 'video/mp4',
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error(`Error uploading video to Supabase storage:`, uploadError);
+        await updateVideoWithError(videoId, `Error uploading video: ${uploadError.message}`);
+        return;
+      }
+
+      console.log('Upload successful:', uploadData);
+    } catch (uploadError: any) {
+      console.error(`Unexpected error uploading file:`, uploadError);
+      await updateVideoWithError(videoId, `Unexpected error uploading file: ${uploadError.message}`);
       return;
     }
-    
-    // Step 4: Get the public URL of the video
-    const { data: publicUrlData } = supabase.storage
-      .from('tiktok-videos')
-      .getPublicUrl(fileKey);
-    
-    const publicVideoUrl = publicUrlData.publicUrl;
-    console.log(`Public URL for video: ${publicVideoUrl}`);
 
-    // Step 5: Verify the public URL is accessible
+    // Step 4: Get the public URL of the video
+    let publicVideoUrl = '';
     try {
-      console.log('Verifying public URL is accessible');
-      const checkResponse = await axios.head(publicVideoUrl, {
-        timeout: 10000
-      });
-      console.log(`Public URL is accessible, status: ${checkResponse.status}`);
-    } catch (checkError: any) {
-      console.warn(`Warning: Could not verify public URL: ${checkError.message}`);
-      console.warn('Will attempt to continue anyway');
+      console.log(`Getting public URL for file: ${fileKey}`);
+      const { data: publicUrlData, error: urlError } = supabase.storage
+        .from('tiktok-videos')
+        .getPublicUrl(fileKey);
+
+      if (urlError) {
+        console.error('Error getting public URL:', urlError);
+        await updateVideoWithError(videoId, `Error getting public URL: ${urlError.message}`);
+        return;
+      }
+
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+        console.error('No public URL returned from Supabase');
+        await updateVideoWithError(videoId, 'No public URL returned from Supabase');
+        return;
+      }
+
+      publicVideoUrl = publicUrlData.publicUrl;
+      console.log(`Public URL for video: ${publicVideoUrl}`);
+
+      // Step 5: Verify the public URL is accessible
+      try {
+        console.log('Verifying public URL is accessible');
+        const checkResponse = await axios.head(publicVideoUrl, {
+          timeout: 10000
+        });
+        console.log(`Public URL is accessible, status: ${checkResponse.status}`);
+      } catch (checkError: any) {
+        console.warn(`Warning: Could not verify public URL: ${checkError.message}`);
+        console.warn('Will attempt to continue anyway');
+      }
+
+    // Make sure the videos directory exists
+    try {
+      console.log('Checking if videos directory exists in bucket');
+      const { data: dirList, error: dirError } = await supabase.storage
+        .from('tiktok-videos')
+        .list();
+
+      if (dirError) {
+        console.error('Error listing bucket root:', dirError);
+      } else {
+        console.log('Bucket root contents:', dirList.map(item => item.name).join(', ') || 'empty');
+
+        // Check if videos directory exists
+        if (!dirList.some(item => item.name === 'videos')) {
+          console.log('Creating videos directory');
+          // Create an empty file to establish the directory
+          await supabase.storage
+            .from('tiktok-videos')
+            .upload('videos/.keep', new Uint8Array(0), {
+              contentType: 'text/plain'
+            });
+
+          console.log('Videos directory created');
+        } else {
+          console.log('Videos directory already exists');
+        }
+      }
+    } catch (dirError: any) {
+      console.warn('Error checking/creating videos directory:', dirError);
+      // Continue anyway
     }
 
     // Prepare the prompt for video analysis
@@ -212,7 +315,7 @@ Be specific and detailed in your analysis.`;
 
     try {
       console.log(`Calling OpenRouter API for video ${videoId}`);
-      
+
       // Prepare the request payload with video_url content type
       const requestPayload = {
         model: "qwen/qwen-2.5-vl-72b-instruct",
@@ -232,7 +335,7 @@ Be specific and detailed in your analysis.`;
           }
         ]
       };
-      
+
       // Prepare the headers
       const headers = {
         'Authorization': `Bearer ${openRouterApiKey.trim()}`,
@@ -240,10 +343,10 @@ Be specific and detailed in your analysis.`;
         'X-Title': 'Lazy Trends',
         'Content-Type': 'application/json'
       };
-      
+
       console.log('Making OpenRouter API call with model: qwen/qwen-2.5-vl-72b-instruct');
       console.log('Request payload:', JSON.stringify(requestPayload, null, 2));
-      
+
       const openRouterResponse = await axios.post(
         'https://openrouter.ai/api/v1/chat/completions',
         requestPayload,
@@ -252,62 +355,62 @@ Be specific and detailed in your analysis.`;
           timeout: 120000 // 2 minute timeout
         }
       );
-      
+
       console.log('OpenRouter API response received');
       console.log('Response status:', openRouterResponse.status);
-      
+
       // Log the full response for debugging
       console.log('OpenRouter response data:', JSON.stringify(openRouterResponse.data, null, 2));
-      
+
       // Extract the analysis from the response
       const analysis = openRouterResponse.data?.choices?.[0]?.message?.content || '';
-      
+
       // Log the extracted analysis
       console.log('Extracted analysis:', analysis ? (analysis.length > 100 ? analysis.substring(0, 100) + '...' : analysis) : 'null');
-      
+
       if (!analysis || analysis.length < 10) {
         console.error('Empty or too short analysis received');
         await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
         return;
       }
-      
+
       console.log(`Analysis received for video ${videoId}, length: ${analysis.length} characters`);
-      
+
       // Update the video with the analysis
       console.log(`Updating video ${videoId} in database with analysis...`);
-      
+
       const updateData = {
         frame_analysis: analysis,
         summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
         last_analyzed_at: new Date().toISOString()
       };
-      
+
       console.log('Update data:', {
         frame_analysis_length: updateData.frame_analysis.length,
         summary_length: updateData.summary.length,
         last_analyzed_at: updateData.last_analyzed_at
       });
-      
+
       const { error: updateError } = await supabase
         .from('tiktok_videos')
         .update(updateData)
         .eq('id', videoId);
-      
+
       if (updateError) {
         console.error('Error updating video with analysis:', updateError);
         console.error('Update error details:', JSON.stringify(updateError, null, 2));
         return;
       }
-      
+
       console.log(`Successfully updated video ${videoId} with analysis`);
-      
+
       // Verify the update by fetching the video again
       const { data: updatedVideo, error: fetchError } = await supabase
         .from('tiktok_videos')
         .select('id, frame_analysis, last_analyzed_at')
         .eq('id', videoId)
         .single();
-        
+
       if (fetchError) {
         console.error('Error verifying update:', fetchError);
       } else {
@@ -324,7 +427,7 @@ Be specific and detailed in your analysis.`;
         status: error.response?.status,
         data: error.response?.data
       });
-      
+
       await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
     } finally {
       // Clean up the temporary file
@@ -334,7 +437,7 @@ Be specific and detailed in your analysis.`;
           const { error: deleteError } = await supabase.storage
             .from('tiktok-videos')
             .remove([fileKey]);
-          
+
           if (deleteError) {
             console.error(`Error deleting temporary file: ${deleteError.message}`);
           } else {
@@ -348,7 +451,7 @@ Be specific and detailed in your analysis.`;
   } catch (error: any) {
     console.error('Unexpected error in background analysis:', error);
     await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
-    
+
     // Clean up the temporary file if there was an error
     if (fileKey) {
       try {
@@ -375,7 +478,7 @@ async function updateVideoWithError(videoId: string, errorMessage: string) {
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId);
-    
+
     console.log(`Updated video ${videoId} with error message`);
   } catch (error: any) {
     console.error('Error updating video with error message:', error);
