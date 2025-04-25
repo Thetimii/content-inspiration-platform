@@ -1,50 +1,37 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
-import { Badge } from "@/components/ui/badge";
-import { Loader2, Play, Pause, Info, CheckCircle, XCircle, Clock } from "lucide-react";
-import { toast } from 'sonner';
+import { motion } from 'framer-motion';
+import { FiHeart, FiEye, FiDownload, FiExternalLink, FiInfo, FiX, FiRefreshCw, FiLink, FiAlertCircle, FiCheckCircle } from 'react-icons/fi';
+import { useTheme } from '@/utils/themeContext';
 
 interface VideoCardStreamingProps {
   video: {
     id: string;
-    title: string;
-    author: string;
-    video_url: string;
-    thumbnail_url: string;
+    caption: string;
+    cover_url?: string;
+    likes: number;
+    views: number;
+    video_url?: string;
     download_url?: string;
-    frame_analysis?: string | null;
-    last_analyzed_at?: string | null;
+    summary?: string;
+    frame_analysis?: string;
+    hashtags?: string[];
+    trend_queries?: { query: string };
   };
   userId: string;
   onAnalysisComplete?: (videoId: string, analysis: string) => void;
 }
 
 export default function VideoCardStreaming({ video, userId, onAnalysisComplete }: VideoCardStreamingProps) {
-  const [isPlaying, setIsPlaying] = useState(false);
+  const { theme } = useTheme();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(video.frame_analysis || null);
   const [analysisStatus, setAnalysisStatus] = useState<string>('idle');
   const [streamMessages, setStreamMessages] = useState<any[]>([]);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const eventSourceRef = useRef<EventSource | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
   // Check if analysis is already complete
   const isAnalysisComplete = analysis && analysis !== 'Analysis in progress...';
   const isAnalysisFailed = analysis && analysis.startsWith('Analysis failed:');
-
-  // Handle play/pause
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-      } else {
-        videoRef.current.play();
-      }
-      setIsPlaying(!isPlaying);
-    }
-  };
 
   // Start streaming analysis
   const startStreamingAnalysis = async () => {
@@ -52,12 +39,7 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
       setIsAnalyzing(true);
       setAnalysisStatus('starting');
       setStreamMessages([]);
-      
-      // Close any existing event source
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-      
+
       // Create a new event source
       const response = await fetch('/api/stream-analysis', {
         method: 'POST',
@@ -68,38 +50,38 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
           videoId: video.id
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to start analysis stream');
       }
-      
+
       // Get the response body as a readable stream
       const reader = response.body?.getReader();
       if (!reader) {
         throw new Error('Failed to get stream reader');
       }
-      
+
       // Read the stream
       const decoder = new TextDecoder();
       let buffer = '';
-      
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        
+
         buffer += decoder.decode(value, { stream: true });
-        
+
         // Process complete SSE messages
         const lines = buffer.split('\n\n');
         buffer = lines.pop() || '';
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.substring(6));
               setStreamMessages(prev => [...prev, data]);
-              
+
               // Update status based on message type
               if (data.type === 'complete') {
                 setAnalysis(data.analysis);
@@ -108,20 +90,20 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
                 if (onAnalysisComplete) {
                   onAnalysisComplete(video.id, data.analysis);
                 }
-                toast.success('Analysis complete!');
+                console.log('Analysis complete!');
               } else if (data.type === 'failed') {
                 setAnalysis(data.message);
                 setAnalysisStatus('failed');
                 setIsAnalyzing(false);
-                toast.error('Analysis failed');
+                console.error('Analysis failed');
               } else if (data.type === 'timeout') {
                 setAnalysisStatus('timeout');
                 setIsAnalyzing(false);
-                toast.error('Analysis timed out');
+                console.error('Analysis timed out');
               } else if (data.type === 'error') {
                 setAnalysisStatus('error');
                 setIsAnalyzing(false);
-                toast.error(`Error: ${data.message}`);
+                console.error(`Error: ${data.message}`);
               } else if (data.type === 'progress') {
                 setAnalysisStatus('in-progress');
               }
@@ -135,7 +117,7 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
       console.error('Error starting analysis stream:', error);
       setAnalysisStatus('error');
       setIsAnalyzing(false);
-      toast.error(`Error: ${error.message || 'Failed to analyze video'}`);
+      console.error(`Error: ${error.message || 'Failed to analyze video'}`);
     }
   };
 
@@ -144,7 +126,7 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
     try {
       setIsAnalyzing(true);
       setAnalysisStatus('starting');
-      
+
       // First, start the analysis process
       const response = await fetch('/api/tiktok-analysis', {
         method: 'POST',
@@ -156,12 +138,12 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
           videoId: video.id
         }),
       });
-      
+
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.error || 'Failed to start analysis');
       }
-      
+
       // Then start streaming the results
       startStreamingAnalysis();
     } catch (error: any) {
@@ -206,76 +188,355 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
   };
 
   return (
-    <Card className="w-full overflow-hidden">
-      <CardHeader className="p-4">
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-lg truncate">{video.title || 'Untitled Video'}</CardTitle>
-            <CardDescription>By {video.author || 'Unknown'}</CardDescription>
-          </div>
-          <Badge variant={isAnalysisComplete ? 'default' : 'outline'}>
-            {isAnalysisComplete ? 'Analyzed' : 'Not Analyzed'}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div className="relative aspect-video bg-gray-100">
-          {video.thumbnail_url ? (
-            <>
-              <video
-                ref={videoRef}
-                src={video.download_url || video.video_url}
-                poster={video.thumbnail_url}
-                className="w-full h-full object-cover"
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onEnded={() => setIsPlaying(false)}
-                controls={false}
+    <motion.div
+      className={`${
+        theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'
+      } rounded-xl overflow-hidden h-full flex flex-col`}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      layoutId={`video-card-${video.id}`}
+    >
+      {/* Thumbnail */}
+      <div className="relative aspect-video overflow-hidden group">
+        {video.cover_url ? (
+          <motion.img
+            src={video.cover_url}
+            alt={video.caption}
+            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+            whileHover={{ scale: 1.05 }}
+          />
+        ) : (
+          <div className={`flex items-center justify-center h-full ${
+            theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+          }`}>
+            <svg
+              className={`w-12 h-12 ${theme === 'dark' ? 'text-gray-700' : 'text-gray-300'}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              xmlns="http://www.w3.org/2000/svg"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
               />
-              <button
-                onClick={togglePlay}
-                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-20 hover:bg-opacity-30 transition-all"
+            </svg>
+          </div>
+        )}
+
+        {/* Overlay with stats */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-3">
+          <div className="flex justify-between items-center text-white">
+            <div className="flex items-center space-x-3">
+              <span className="flex items-center">
+                <FiHeart className="mr-1 text-pink-500" />
+                {video.likes.toLocaleString()}
+              </span>
+              <span className="flex items-center">
+                <FiEye className="mr-1 text-blue-400" />
+                {video.views.toLocaleString()}
+              </span>
+            </div>
+
+            <motion.button
+              onClick={() => setShowDetails(true)}
+              className="p-2 bg-white/20 backdrop-blur-sm rounded-full"
+              whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.9 }}
+            >
+              <FiInfo size={16} />
+            </motion.button>
+          </div>
+        </div>
+
+        {/* Analysis status badge */}
+        <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs ${
+          isAnalysisComplete && !isAnalysisFailed
+            ? theme === 'dark' ? 'bg-green-900/70 text-green-300' : 'bg-green-100 text-green-800'
+            : isAnalyzing
+              ? theme === 'dark' ? 'bg-yellow-900/70 text-yellow-300' : 'bg-yellow-100 text-yellow-800'
+              : isAnalysisFailed
+                ? theme === 'dark' ? 'bg-red-900/70 text-red-300' : 'bg-red-100 text-red-800'
+                : theme === 'dark' ? 'bg-gray-900/70 text-gray-300' : 'bg-gray-100 text-gray-800'
+        } backdrop-blur-sm`}>
+          {isAnalysisComplete && !isAnalysisFailed
+            ? 'Analyzed'
+            : isAnalyzing
+              ? 'Analyzing...'
+              : isAnalysisFailed
+                ? 'Failed'
+                : 'Not Analyzed'}
+        </div>
+      </div>
+
+      {/* Content */}
+      <div className="p-4 flex-1 flex flex-col">
+        <h3 className={`font-medium mb-2 line-clamp-2 ${
+          theme === 'dark' ? 'text-gray-100' : 'text-gray-800'
+        }`}>
+          {video.caption}
+        </h3>
+
+        {/* Hashtags */}
+        {video.hashtags && video.hashtags.length > 0 && (
+          <div className="mt-2 flex flex-wrap gap-1 mb-3">
+            {video.hashtags.slice(0, 3).map((tag: string, index: number) => (
+              <span
+                key={index}
+                className={`px-2 py-0.5 rounded text-xs ${
+                  theme === 'dark' ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'
+                }`}
               >
-                {isPlaying ? (
-                  <Pause className="h-12 w-12 text-white" />
+                #{tag}
+              </span>
+            ))}
+            {video.hashtags.length > 3 && (
+              <span className={`px-2 py-0.5 rounded text-xs ${
+                theme === 'dark' ? 'bg-gray-800 text-gray-400' : 'bg-gray-100 text-gray-500'
+              }`}>
+                +{video.hashtags.length - 3} more
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Stream Messages */}
+        {isAnalyzing && streamMessages.length > 0 && (
+          <div className={`mt-2 text-xs ${
+            theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+          } max-h-20 overflow-y-auto`}>
+            {streamMessages.map((msg, i) => (
+              <div key={i} className="mb-1 flex items-center">
+                {msg.type === 'progress' ? (
+                  <>
+                    <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                    <span>Still analyzing... (attempt {msg.attempts})</span>
+                  </>
+                ) : msg.type === 'complete' ? (
+                  <>
+                    <FiCheckCircle className="mr-1 text-green-500" />
+                    <span className="text-green-500">Analysis complete!</span>
+                  </>
                 ) : (
-                  <Play className="h-12 w-12 text-white" />
+                  <span>{msg.message}</span>
                 )}
-              </button>
-            </>
-          ) : (
-            <Skeleton className="w-full h-full" />
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Query tag */}
+        {video.trend_queries && (
+          <div className={`mt-auto pt-2 text-xs ${
+            theme === 'dark' ? 'text-indigo-400' : 'text-indigo-600'
+          }`}>
+            Query: {video.trend_queries.query}
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className={`p-4 border-t ${
+        theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+      } flex justify-between`}>
+        <div className="flex space-x-3">
+          <a
+            href={video.video_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={`text-sm font-medium flex items-center ${
+              theme === 'dark' ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'
+            }`}
+          >
+            <FiExternalLink className="mr-1" />
+            View on TikTok
+          </a>
+
+          {video.download_url && (
+            <a
+              href={video.download_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={`text-sm font-medium flex items-center ${
+                theme === 'dark' ? 'text-green-400 hover:text-green-300' : 'text-green-600 hover:text-green-800'
+              }`}
+            >
+              <FiDownload className="mr-1" />
+              Download
+            </a>
           )}
         </div>
-        
-        <div className="p-4">
-          <div className="flex justify-between items-center mb-2">
-            <h3 className="font-semibold">Analysis</h3>
-            {renderAnalysisStatus()}
-          </div>
-          
-          {isAnalysisComplete && !isAnalysisFailed ? (
-            <div className="text-sm mt-2 max-h-40 overflow-y-auto">
-              {analysis}
-            </div>
-          ) : isAnalysisFailed ? (
-            <div className="text-sm mt-2 text-red-600">
-              {analysis}
-            </div>
+
+        <button
+          onClick={analyzeVideo}
+          disabled={isAnalyzing}
+          className={`text-sm font-medium flex items-center ${
+            isAnalyzing
+              ? theme === 'dark' ? 'text-yellow-600 cursor-not-allowed' : 'text-yellow-400 cursor-not-allowed'
+              : theme === 'dark' ? 'text-emerald-400 hover:text-emerald-300' : 'text-emerald-600 hover:text-emerald-800'
+          }`}
+        >
+          {isAnalyzing ? (
+            <>
+              <div className="w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+              Analyzing...
+            </>
           ) : (
-            <div className="text-sm mt-2 text-gray-500">
-              {isAnalyzing ? (
-                <div className="space-y-2">
-                  <div className="flex items-center space-x-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Analysis in progress...</span>
+            <>
+              <FiRefreshCw className="mr-1" />
+              {isAnalysisComplete ? 'Re-Analyze' : 'Analyze'}
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Details modal */}
+      {showDetails && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm"
+          onClick={() => setShowDetails(false)}
+        >
+          <div
+            className={`${
+              theme === 'dark' ? 'glass-card-dark' : 'glass-card-light'
+            } w-full max-w-2xl rounded-xl overflow-hidden`}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className={`p-4 flex justify-between items-center border-b ${
+              theme === 'dark' ? 'border-gray-700' : 'border-gray-200'
+            }`}>
+              <h3 className={`font-semibold ${
+                theme === 'dark' ? 'text-white' : 'text-gray-800'
+              }`}>
+                Video Details
+              </h3>
+              <button
+                onClick={() => setShowDetails(false)}
+                className={`p-2 rounded-full ${
+                  theme === 'dark' ? 'hover:bg-gray-700' : 'hover:bg-gray-100'
+                }`}
+              >
+                <FiX />
+              </button>
+            </div>
+
+            <div className="p-6">
+              <div className="flex mb-6">
+                {video.cover_url && (
+                  <div className="w-1/3 mr-4">
+                    <img
+                      src={video.cover_url}
+                      alt={video.caption}
+                      className="w-full h-auto rounded-lg"
+                    />
                   </div>
+                )}
+
+                <div className="flex-1">
+                  <h4 className={`font-medium mb-2 ${
+                    theme === 'dark' ? 'text-gray-100' : 'text-gray-800'
+                  }`}>
+                    {video.caption}
+                  </h4>
+
+                  <div className="grid grid-cols-2 gap-4 mt-4">
+                    <div>
+                      <p className={`text-xs ${
+                        theme === 'dark' ? 'text-gray-400' : 'text-black font-semibold'
+                      }`}>
+                        Likes
+                      </p>
+                      <p className={`font-semibold ${
+                        theme === 'dark' ? 'text-pink-400' : 'text-pink-600'
+                      }`}>
+                        {video.likes.toLocaleString()}
+                      </p>
+                    </div>
+
+                    <div>
+                      <p className={`text-xs ${
+                        theme === 'dark' ? 'text-gray-400' : 'text-black font-semibold'
+                      }`}>
+                        Views
+                      </p>
+                      <p className={`font-semibold ${
+                        theme === 'dark' ? 'text-blue-400' : 'text-blue-600'
+                      }`}>
+                        {video.views.toLocaleString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {video.hashtags && video.hashtags.length > 0 && (
+                    <div className="mt-4">
+                      <p className={`text-xs mb-1 ${
+                        theme === 'dark' ? 'text-gray-400' : 'text-gray-500'
+                      }`}>
+                        Hashtags
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {video.hashtags.map((tag: string, index: number) => (
+                          <span
+                            key={index}
+                            className={`px-2 py-0.5 rounded text-xs ${
+                              theme === 'dark' ? 'bg-gray-800 text-gray-300' : 'bg-gray-100 text-gray-600'
+                            }`}
+                          >
+                            #{tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {isAnalysisComplete && !isAnalysisFailed ? (
+                <div>
+                  <h4 className={`font-medium mb-2 ${
+                    theme === 'dark' ? 'text-gray-200' : 'text-gray-700'
+                  }`}>
+                    AI Analysis
+                  </h4>
+                  <div className={`text-sm ${
+                    theme === 'dark' ? 'text-gray-300' : 'text-gray-600'
+                  } max-h-60 overflow-y-auto p-4 rounded-lg ${
+                    theme === 'dark' ? 'bg-gray-800/50' : 'bg-gray-100'
+                  }`}>
+                    {(analysis || '').split('\n').map((line, index) => (
+                      <p key={index} className={line.startsWith('#') ? 'font-bold mt-2' : 'mb-2'}>
+                        {line}
+                      </p>
+                    ))}
+                  </div>
+                </div>
+              ) : isAnalyzing ? (
+                <div className={`p-4 rounded-lg ${
+                  theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                } text-center`}>
+                  <div className="flex justify-center items-center space-x-2">
+                    <div className="w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin"></div>
+                    <p className={`text-sm ${
+                      theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
+                    }`}>
+                      Analysis in progress... This may take a minute.
+                    </p>
+                  </div>
+
                   {streamMessages.length > 0 && (
-                    <div className="text-xs text-gray-500 max-h-20 overflow-y-auto">
+                    <div className={`mt-4 text-xs ${
+                      theme === 'dark' ? 'text-gray-400' : 'text-gray-600'
+                    } max-h-40 overflow-y-auto text-left`}>
                       {streamMessages.map((msg, i) => (
-                        <div key={i} className="mb-1">
+                        <div key={i} className="mb-1 flex items-center">
                           {msg.type === 'progress' ? (
-                            <span>Still analyzing... (attempt {msg.attempts})</span>
+                            <>
+                              <div className="w-2 h-2 rounded-full border-2 border-current border-t-transparent animate-spin mr-1"></div>
+                              <span>Still analyzing... (attempt {msg.attempts})</span>
+                            </>
                           ) : (
                             <span>{msg.message}</span>
                           )}
@@ -284,39 +545,85 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
                     </div>
                   )}
                 </div>
+              ) : isAnalysisFailed ? (
+                <div className={`p-4 rounded-lg ${
+                  theme === 'dark' ? 'bg-red-900/20' : 'bg-red-50'
+                } text-center`}>
+                  <p className={`text-sm ${
+                    theme === 'dark' ? 'text-red-400' : 'text-red-600'
+                  }`}>
+                    {analysis || 'Analysis failed. Please try again.'}
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowDetails(false);
+                      analyzeVideo();
+                    }}
+                    className={`mt-2 px-4 py-2 rounded-lg ${
+                      theme === 'dark' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                    } text-white text-sm`}
+                  >
+                    Retry Analysis
+                  </button>
+                </div>
               ) : (
-                <span>Click "Analyze" to analyze this video</span>
+                <div className={`p-4 rounded-lg ${
+                  theme === 'dark' ? 'bg-gray-800' : 'bg-gray-100'
+                } text-center`}>
+                  <p className={`text-sm ${
+                    theme === 'dark' ? 'text-gray-400' : 'text-gray-900'
+                  }`}>
+                    This video has not been analyzed yet.
+                  </p>
+                  <button
+                    onClick={() => {
+                      setShowDetails(false);
+                      analyzeVideo();
+                    }}
+                    className={`mt-2 px-4 py-2 rounded-lg ${
+                      theme === 'dark' ? 'bg-emerald-700 hover:bg-emerald-600' : 'bg-emerald-600 hover:bg-emerald-700'
+                    } text-white text-sm`}
+                  >
+                    Analyze Now
+                  </button>
+                </div>
               )}
+
+              <div className="mt-6 flex justify-end space-x-3">
+                {video.video_url && (
+                  <a
+                    href={video.video_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`px-4 py-2 rounded-lg flex items-center ${
+                      theme === 'dark' ? 'glass-button-dark' : 'glass-button-light'
+                    } text-white`}
+                  >
+                    <FiExternalLink className="mr-2" />
+                    View on TikTok
+                  </a>
+                )}
+
+                {video.download_url && (
+                  <a
+                    href={video.download_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`px-4 py-2 rounded-lg flex items-center ${
+                      theme === 'dark'
+                        ? 'bg-green-600/80 hover:bg-green-600'
+                        : 'bg-green-600 hover:bg-green-700'
+                    } text-white`}
+                  >
+                    <FiDownload className="mr-2" />
+                    Download
+                  </a>
+                )}
+              </div>
             </div>
-          )}
+          </div>
         </div>
-      </CardContent>
-      <CardFooter className="p-4 pt-0 flex justify-between">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => window.open(video.video_url, '_blank')}
-        >
-          View Original
-        </Button>
-        <Button
-          variant={isAnalysisComplete ? "outline" : "default"}
-          size="sm"
-          onClick={analyzeVideo}
-          disabled={isAnalyzing}
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Analyzing...
-            </>
-          ) : isAnalysisComplete ? (
-            'Re-Analyze'
-          ) : (
-            'Analyze'
-          )}
-        </Button>
-      </CardFooter>
-    </Card>
+      )}
+    </motion.div>
   );
 }
