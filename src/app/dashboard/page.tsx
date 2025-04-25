@@ -12,7 +12,7 @@ import DashboardSidebar from '@/components/DashboardSidebar';
 import WelcomeSection from '@/components/WelcomeSection';
 import QuickActions from '@/components/QuickActions';
 import VideoCard from '@/components/VideoCard';
-import VideoCardEnhanced from '@/components/VideoCardEnhanced';
+import VideoCardStreaming from '@/components/VideoCardStreaming';
 import RecommendationCard from '@/components/RecommendationCard';
 import StatisticsCard from '@/components/StatisticsCard';
 import SubscriptionStatus from '@/components/SubscriptionStatus';
@@ -800,11 +800,11 @@ export default function Dashboard() {
                 {videos.length > 0 ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {videos.slice(0, 6).map(video => (
-                      <VideoCardEnhanced
+                      <VideoCardStreaming
                         key={video.id}
                         video={video}
-                        onGetCleanUrl={getCleanUrl}
-                        isGettingCleanUrl={gettingCleanUrls[video.id]}
+                        userId={user.id}
+                        onAnalysisComplete={handleAnalysisComplete}
                       />
                     ))}
                   </div>
@@ -1024,13 +1024,11 @@ export default function Dashboard() {
                           <div className={`p-4 ${theme === 'dark' ? 'bg-gray-800/50' : 'bg-white'} rounded-b-lg ${collapsedQueries[query.id] ? 'hidden' : ''}`}>
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                               {queryVideos.map((video) => (
-                                <VideoCardEnhanced
+                                <VideoCardStreaming
                                   key={video.id}
                                   video={video}
-                                  onAnalyze={analyzeVideo}
-                                  isAnalyzing={analyzingVideos[video.id]}
-                                  onGetCleanUrl={getCleanUrl}
-                                  isGettingCleanUrl={gettingCleanUrls[video.id]}
+                                  userId={user.id}
+                                  onAnalysisComplete={handleAnalysisComplete}
                                 />
                               ))}
                             </div>
