@@ -452,6 +452,8 @@ export default function Dashboard() {
 
       console.log(`Analyzing video ID: ${videoId}`);
 
+      // Make sure we're using the latest video analysis API
+      console.log('Calling video-analysis API for video:', videoId);
       const response = await fetch('/api/video-analysis', {
         method: 'POST',
         headers: {
@@ -526,6 +528,8 @@ export default function Dashboard() {
 
           console.log(`Analyzing video ID: ${video.id}`);
 
+          // Make sure we're using the latest video analysis API
+          console.log('Calling video-analysis API for video:', video.id);
           const response = await fetch('/api/video-analysis', {
             method: 'POST',
             headers: {
