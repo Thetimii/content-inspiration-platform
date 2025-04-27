@@ -373,18 +373,65 @@ Be specific and detailed in your analysis.`;
       };
 
       console.log(`[DIRECT-ANALYSIS] Updating video ${videoId} in database with analysis...`);
-      const { error: updateError } = await supabase
+      console.log(`[DIRECT-ANALYSIS] Analysis length: ${analysis.length} characters`);
+      console.log(`[DIRECT-ANALYSIS] Summary length: ${updateData.summary.length} characters`);
+
+      // Log the first part of the analysis for debugging
+      console.log(`[DIRECT-ANALYSIS] Analysis first 200 chars: ${analysis.substring(0, 200)}`);
+
+      // Make the Supabase update
+      const { data: updateData2, error: updateError } = await supabase
         .from('tiktok_videos')
         .update(updateData)
-        .eq('id', videoId);
+        .eq('id', videoId)
+        .select('id, frame_analysis, last_analyzed_at');
 
       if (updateError) {
         console.error('[DIRECT-ANALYSIS] Error updating video with analysis:', updateError);
+        console.error('[DIRECT-ANALYSIS] Error details:', JSON.stringify(updateError, null, 2));
         await updateVideoWithError(videoId, `Error updating video: ${updateError.message}`);
         return;
       }
 
       console.log(`[DIRECT-ANALYSIS] Successfully updated video ${videoId} with analysis`);
+
+      // Verify the update by checking the returned data
+      if (updateData2 && updateData2.length > 0) {
+        const updatedVideo = updateData2[0];
+        console.log(`[DIRECT-ANALYSIS] Update verification:`, {
+          id: updatedVideo.id,
+          frame_analysis_length: updatedVideo.frame_analysis ? updatedVideo.frame_analysis.length : 0,
+          last_analyzed_at: updatedVideo.last_analyzed_at
+        });
+
+        if (!updatedVideo.frame_analysis || updatedVideo.frame_analysis.length < 10) {
+          console.error('[DIRECT-ANALYSIS] Warning: Updated video has empty or too short analysis');
+        }
+      } else {
+        console.warn('[DIRECT-ANALYSIS] No data returned from update operation, cannot verify update');
+      }
+
+      // Double-check by fetching the video again
+      try {
+        const { data: verifyVideo, error: verifyError } = await supabase
+          .from('tiktok_videos')
+          .select('id, frame_analysis, last_analyzed_at')
+          .eq('id', videoId)
+          .single();
+
+        if (verifyError) {
+          console.error('[DIRECT-ANALYSIS] Error verifying update:', verifyError);
+        } else if (verifyVideo) {
+          console.log('[DIRECT-ANALYSIS] Verification fetch successful:', {
+            id: verifyVideo.id,
+            frame_analysis_length: verifyVideo.frame_analysis ? verifyVideo.frame_analysis.length : 0,
+            last_analyzed_at: verifyVideo.last_analyzed_at,
+            frame_analysis_start: verifyVideo.frame_analysis ? verifyVideo.frame_analysis.substring(0, 50) + '...' : 'null'
+          });
+        }
+      } catch (verifyError) {
+        console.error('[DIRECT-ANALYSIS] Error during verification fetch:', verifyError);
+      }
 
     } catch (error: any) {
       console.error('[DIRECT-ANALYSIS] Error analyzing video with DashScope:', error);
@@ -463,20 +510,41 @@ async function updateVideoWithError(videoId: string, errorMessage: string) {
   try {
     console.log(`[DIRECT-ANALYSIS] Updating video ${videoId} with error message: ${errorMessage}`);
 
-    const { error } = await supabase
+    // Make sure the error message isn't too long for the database
+    const truncatedMessage = errorMessage.length > 1000 ? errorMessage.substring(0, 1000) + '...' : errorMessage;
+
+    const updateData = {
+      frame_analysis: `Analysis failed: ${truncatedMessage}`,
+      last_analyzed_at: new Date().toISOString()
+    };
+
+    console.log(`[DIRECT-ANALYSIS] Error update data:`, updateData);
+
+    const { data, error } = await supabase
       .from('tiktok_videos')
-      .update({
-        frame_analysis: `Analysis failed: ${errorMessage}`,
-        last_analyzed_at: new Date().toISOString()
-      })
-      .eq('id', videoId);
+      .update(updateData)
+      .eq('id', videoId)
+      .select('id, frame_analysis, last_analyzed_at');
 
     if (error) {
       console.error(`[DIRECT-ANALYSIS] Error updating video with error message:`, error);
+      console.error(`[DIRECT-ANALYSIS] Error details:`, JSON.stringify(error, null, 2));
     } else {
       console.log(`[DIRECT-ANALYSIS] Successfully updated video ${videoId} with error message`);
+
+      // Verify the update
+      if (data && data.length > 0) {
+        console.log(`[DIRECT-ANALYSIS] Error update verification:`, {
+          id: data[0].id,
+          frame_analysis_length: data[0].frame_analysis ? data[0].frame_analysis.length : 0,
+          last_analyzed_at: data[0].last_analyzed_at
+        });
+      } else {
+        console.warn(`[DIRECT-ANALYSIS] No data returned from error update operation`);
+      }
     }
   } catch (error: any) {
     console.error(`[DIRECT-ANALYSIS] Error updating video with error message:`, error);
+    console.error(`[DIRECT-ANALYSIS] Error stack:`, error.stack);
   }
 }
