@@ -74,9 +74,42 @@ export async function POST(request: Request) {
       );
     }
 
-    // Start the analysis process in the background without waiting for it to complete
-    // This prevents Vercel's 10-second timeout from being triggered
-    analyzeVideoInBackground(videoId, originalVideoUrl);
+    // Check if we have an external video analysis service configured
+    const externalServiceUrl = process.env.VIDEO_ANALYSIS_SERVICE_URL;
+    const webhookSecret = process.env.WEBHOOK_SECRET;
+
+    if (externalServiceUrl && webhookSecret) {
+      // Use the external service for video analysis
+      try {
+        console.log(`[DIRECT-ANALYSIS] Using external service for video ${videoId}`);
+        console.log(`[DIRECT-ANALYSIS] External service URL: ${externalServiceUrl}`);
+
+        // Call the external service
+        const serviceResponse = await axios.post(`${externalServiceUrl}/analyze`, {
+          videoId,
+          videoUrl: originalVideoUrl,
+          webhookUrl: `${process.env.NEXT_PUBLIC_APP_URL || 'https://www.lazy-trends.com'}/api/video-analysis-webhook`,
+          webhookSecret
+        }, {
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          timeout: 5000 // 5 second timeout
+        });
+
+        console.log(`[DIRECT-ANALYSIS] External service response:`, serviceResponse.data);
+      } catch (serviceError: any) {
+        console.error(`[DIRECT-ANALYSIS] Error calling external service:`, serviceError.message);
+        console.log(`[DIRECT-ANALYSIS] Falling back to background analysis`);
+
+        // Fall back to background analysis
+        analyzeVideoInBackground(videoId, originalVideoUrl);
+      }
+    } else {
+      // No external service configured, use background analysis
+      console.log(`[DIRECT-ANALYSIS] No external service configured, using background analysis for video ${videoId}`);
+      analyzeVideoInBackground(videoId, originalVideoUrl);
+    }
 
     // Return a response immediately
     return NextResponse.json({
