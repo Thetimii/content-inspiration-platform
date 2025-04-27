@@ -54,6 +54,9 @@ export async function POST(request: Request) {
       );
     }
 
+    // Get the original video URL
+    const originalVideoUrl = video.download_url || video.video_url;
+
     // Update the video status to indicate analysis is in progress
     const { error: updateError } = await supabase
       .from('tiktok_videos')
@@ -62,7 +65,7 @@ export async function POST(request: Request) {
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId);
-      
+
     if (updateError) {
       console.error(`[DIRECT-ANALYSIS] Error updating video ${videoId} status:`, updateError);
       return NextResponse.json(
@@ -73,8 +76,8 @@ export async function POST(request: Request) {
 
     // Start the analysis process in the background without waiting for it to complete
     // This prevents Vercel's 10-second timeout from being triggered
-    analyzeVideoInBackground(videoId, video.download_url || video.video_url);
-    
+    analyzeVideoInBackground(videoId, originalVideoUrl);
+
     // Return a response immediately
     return NextResponse.json({
       success: true,
@@ -82,10 +85,10 @@ export async function POST(request: Request) {
       video_id: videoId,
       status: 'processing'
     });
-    
+
   } catch (error: any) {
     console.error('[DIRECT-ANALYSIS] Unexpected error:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
@@ -97,25 +100,170 @@ export async function POST(request: Request) {
  * Analyze a video in the background and update the database when complete
  * This implementation follows the exact approach from the video analyzer project
  */
-async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
+async function analyzeVideoInBackground(videoId: string, originalVideoUrl: string) {
+  let fileKey = '';
+
   try {
     console.log(`[DIRECT-ANALYSIS] Starting background analysis for video ${videoId}`);
-    console.log(`[DIRECT-ANALYSIS] Using video URL: ${videoUrl}`);
+    console.log(`[DIRECT-ANALYSIS] Using original video URL: ${originalVideoUrl}`);
 
     // Get the DashScope API key
     const dashscopeApiKey = process.env.DASHSCOPE_API_KEY;
     console.log(`[DIRECT-ANALYSIS] DashScope API key available: ${dashscopeApiKey ? 'Yes' : 'No'}`);
     console.log(`[DIRECT-ANALYSIS] DashScope API key length: ${dashscopeApiKey?.length || 0}`);
-    
+
     if (!dashscopeApiKey) {
       console.error('[DIRECT-ANALYSIS] DashScope API key is missing');
       await updateVideoWithError(videoId, 'DashScope API key is missing');
       return;
     }
-    
+
     // Log the first few characters of the API key for debugging (don't log the full key)
     if (dashscopeApiKey.length > 8) {
       console.log(`[DIRECT-ANALYSIS] DashScope API key prefix: ${dashscopeApiKey.substring(0, 4)}...${dashscopeApiKey.substring(dashscopeApiKey.length - 4)}`);
+    }
+
+    // Step 1: Ensure the bucket exists and is public
+    try {
+      console.log('[DIRECT-ANALYSIS] Checking if tiktok-videos bucket exists');
+      const { data: buckets, error: listError } = await supabase.storage.listBuckets();
+
+      if (listError) {
+        console.error('[DIRECT-ANALYSIS] Error listing buckets:', listError);
+        await updateVideoWithError(videoId, `Error listing buckets: ${listError.message}`);
+        return;
+      }
+
+      console.log(`[DIRECT-ANALYSIS] Buckets found: ${buckets?.map(b => b.name).join(', ') || 'none'}`);
+      const bucket = buckets?.find(b => b.name === 'tiktok-videos');
+
+      if (!bucket) {
+        console.log('[DIRECT-ANALYSIS] Creating tiktok-videos bucket with public access');
+        const { error: createError } = await supabase.storage.createBucket('tiktok-videos', {
+          public: true,
+          fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+        });
+
+        if (createError) {
+          console.error('[DIRECT-ANALYSIS] Error creating bucket:', createError);
+          await updateVideoWithError(videoId, `Error creating bucket: ${createError.message}`);
+          return;
+        }
+        console.log('[DIRECT-ANALYSIS] Successfully created tiktok-videos bucket');
+      } else {
+        console.log('[DIRECT-ANALYSIS] Bucket found:', bucket);
+
+        if (!bucket.public) {
+          console.log('[DIRECT-ANALYSIS] Updating tiktok-videos bucket to be public');
+          const { error: updateError } = await supabase.storage.updateBucket('tiktok-videos', {
+            public: true,
+            fileSizeLimit: 50 * 1024 * 1024 // 50MB limit
+          });
+
+          if (updateError) {
+            console.error('[DIRECT-ANALYSIS] Error updating bucket to public:', updateError);
+            await updateVideoWithError(videoId, `Error updating bucket: ${updateError.message}`);
+            return;
+          }
+          console.log('[DIRECT-ANALYSIS] Successfully updated tiktok-videos bucket to public');
+        } else {
+          console.log('[DIRECT-ANALYSIS] tiktok-videos bucket already exists and is public');
+        }
+      }
+    } catch (bucketError: any) {
+      console.error('[DIRECT-ANALYSIS] Unexpected error managing bucket:', bucketError);
+      await updateVideoWithError(videoId, `Unexpected error managing bucket: ${bucketError.message}`);
+      return;
+    }
+
+    // Step 2: Download the video file
+    let videoBuffer;
+    try {
+      console.log(`[DIRECT-ANALYSIS] Downloading video file from ${originalVideoUrl}`);
+      const response = await axios.get(originalVideoUrl, {
+        responseType: 'arraybuffer',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        },
+        timeout: 60000 // 60 second timeout for download
+      });
+
+      videoBuffer = response.data;
+      console.log(`[DIRECT-ANALYSIS] Video file downloaded, size: ${videoBuffer.byteLength} bytes`);
+
+      if (!videoBuffer || videoBuffer.byteLength === 0) {
+        console.error('[DIRECT-ANALYSIS] Downloaded video file is empty');
+        await updateVideoWithError(videoId, 'Downloaded video file is empty');
+        return;
+      }
+
+      if (videoBuffer.byteLength > 10 * 1024 * 1024) {
+        console.warn(`[DIRECT-ANALYSIS] Warning: Video file is large (${(videoBuffer.byteLength / (1024 * 1024)).toFixed(2)} MB), which might exceed DashScope limits`);
+      }
+    } catch (downloadError: any) {
+      console.error(`[DIRECT-ANALYSIS] Error downloading video file: ${downloadError.message}`);
+      await updateVideoWithError(videoId, `Error downloading video file: ${downloadError.message}`);
+      return;
+    }
+
+    // Step 3: Upload the video to Supabase storage
+    let supabaseVideoUrl = '';
+    try {
+      fileKey = `tiktok-videos/${videoId}-${Date.now()}.mp4`;
+      console.log(`[DIRECT-ANALYSIS] Uploading video to Supabase storage: ${fileKey}`);
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('tiktok-videos')
+        .upload(fileKey, videoBuffer, {
+          contentType: 'video/mp4',
+          cacheControl: '3600',
+          upsert: true
+        });
+
+      if (uploadError) {
+        console.error(`[DIRECT-ANALYSIS] Error uploading video to Supabase storage:`, uploadError);
+        await updateVideoWithError(videoId, `Error uploading video: ${uploadError.message}`);
+        return;
+      }
+
+      console.log(`[DIRECT-ANALYSIS] Video uploaded successfully to Supabase storage: ${fileKey}`);
+      console.log('[DIRECT-ANALYSIS] Upload data:', uploadData);
+
+      // Get the public URL of the video
+      const { data: publicUrlData, error: urlError } = supabase.storage
+        .from('tiktok-videos')
+        .getPublicUrl(fileKey);
+
+      if (urlError) {
+        console.error('[DIRECT-ANALYSIS] Error getting public URL:', urlError);
+        await updateVideoWithError(videoId, `Error getting public URL: ${urlError.message}`);
+        return;
+      }
+
+      if (!publicUrlData || !publicUrlData.publicUrl) {
+        console.error('[DIRECT-ANALYSIS] No public URL returned from Supabase');
+        await updateVideoWithError(videoId, 'No public URL returned from Supabase');
+        return;
+      }
+
+      supabaseVideoUrl = publicUrlData.publicUrl;
+      console.log(`[DIRECT-ANALYSIS] Public URL for video: ${supabaseVideoUrl}`);
+
+      // Verify the public URL is accessible
+      try {
+        console.log('[DIRECT-ANALYSIS] Verifying public URL is accessible');
+        const checkResponse = await axios.head(supabaseVideoUrl, {
+          timeout: 10000
+        });
+        console.log(`[DIRECT-ANALYSIS] Public URL is accessible, status: ${checkResponse.status}`);
+      } catch (checkError: any) {
+        console.warn(`[DIRECT-ANALYSIS] Warning: Could not verify public URL: ${checkError.message}`);
+        console.warn('[DIRECT-ANALYSIS] Will attempt to continue anyway');
+      }
+    } catch (storageError: any) {
+      console.error('[DIRECT-ANALYSIS] Error with Supabase storage:', storageError);
+      await updateVideoWithError(videoId, `Error with Supabase storage: ${storageError.message}`);
+      return;
     }
 
     // Prepare the prompt for video analysis
@@ -129,33 +277,34 @@ async function analyzeVideoInBackground(videoId: string, videoUrl: string) {
 Be specific and detailed in your analysis.`;
 
     // Prepare the request payload for DashScope API using the exact format from the video analyzer project
+    // Use the Supabase video URL instead of the original URL
     const requestBody = {
       model: 'qwen-vl-max',
       input: {
         messages: [
-          { 
-            role: "system", 
-            content: [{ text: "You are a helpful assistant that analyzes TikTok videos in detail." }] 
+          {
+            role: "system",
+            content: [{ text: "You are a helpful assistant that analyzes TikTok videos in detail." }]
           },
           {
             role: "user",
             content: [
-              { video: videoUrl, fps: 2 }, // Use fps: 2 to extract frames at 2 frames per second
+              { video: supabaseVideoUrl, fps: 2 }, // Use fps: 2 to extract frames at 2 frames per second
               { text: prompt }
             ]
           }
         ]
       }
     };
-    
+
     // Prepare the headers
     const headers = {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${dashscopeApiKey.trim()}`
     };
-    
+
     console.log('[DIRECT-ANALYSIS] Making API call to DashScope with video URL:', videoUrl);
-    
+
     try {
       // Make the API call to DashScope - using the exact endpoint from the video analyzer project
       const response = await axios.post(
@@ -166,47 +315,47 @@ Be specific and detailed in your analysis.`;
           timeout: 180000 // 3 minutes timeout for video processing
         }
       );
-      
+
       console.log('[DIRECT-ANALYSIS] Received response from DashScope API');
       console.log('[DIRECT-ANALYSIS] Response status:', response.status);
       console.log('[DIRECT-ANALYSIS] Response data:', JSON.stringify(response.data, null, 2));
-      
+
       // Extract the analysis from the response using the format from the video analyzer project
       const analysis = response.data?.output?.text || '';
-      
+
       if (!analysis || analysis.length < 10) {
         console.error('[DIRECT-ANALYSIS] Empty or too short analysis received');
         await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
         return;
       }
-      
+
       console.log('[DIRECT-ANALYSIS] Analysis received, length:', analysis.length);
       console.log('[DIRECT-ANALYSIS] Analysis preview:', analysis.substring(0, 100) + '...');
-      
+
       // Update the video with the analysis
       const updateData = {
         frame_analysis: analysis,
         summary: analysis.substring(0, 500) + (analysis.length > 500 ? '...' : ''),
         last_analyzed_at: new Date().toISOString()
       };
-      
+
       console.log(`[DIRECT-ANALYSIS] Updating video ${videoId} in database with analysis...`);
       const { error: updateError } = await supabase
         .from('tiktok_videos')
         .update(updateData)
         .eq('id', videoId);
-      
+
       if (updateError) {
         console.error('[DIRECT-ANALYSIS] Error updating video with analysis:', updateError);
         await updateVideoWithError(videoId, `Error updating video: ${updateError.message}`);
         return;
       }
-      
+
       console.log(`[DIRECT-ANALYSIS] Successfully updated video ${videoId} with analysis`);
-      
+
     } catch (error: any) {
       console.error('[DIRECT-ANALYSIS] Error analyzing video with DashScope:', error);
-      
+
       if (error.response) {
         console.error('[DIRECT-ANALYSIS] Response data:', JSON.stringify(error.response.data, null, 2));
         console.error('[DIRECT-ANALYSIS] Response status:', error.response.status);
@@ -215,12 +364,30 @@ Be specific and detailed in your analysis.`;
       } else {
         console.error('[DIRECT-ANALYSIS] Error setting up request:', error.message);
       }
-      
+
       await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
     }
   } catch (error: any) {
     console.error('[DIRECT-ANALYSIS] Unexpected error in background analysis:', error);
     await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
+  } finally {
+    // Clean up the temporary file
+    if (fileKey) {
+      try {
+        console.log(`[DIRECT-ANALYSIS] Deleting temporary file from Supabase storage: ${fileKey}`);
+        const { error: deleteError } = await supabase.storage
+          .from('tiktok-videos')
+          .remove([fileKey]);
+
+        if (deleteError) {
+          console.error(`[DIRECT-ANALYSIS] Error deleting temporary file: ${deleteError.message}`);
+        } else {
+          console.log(`[DIRECT-ANALYSIS] Successfully deleted temporary file: ${fileKey}`);
+        }
+      } catch (deleteError: any) {
+        console.error(`[DIRECT-ANALYSIS] Error deleting temporary file: ${deleteError.message}`);
+      }
+    }
   }
 }
 
@@ -230,7 +397,7 @@ Be specific and detailed in your analysis.`;
 async function updateVideoWithError(videoId: string, errorMessage: string) {
   try {
     console.log(`[DIRECT-ANALYSIS] Updating video ${videoId} with error message: ${errorMessage}`);
-    
+
     const { error } = await supabase
       .from('tiktok_videos')
       .update({
@@ -238,7 +405,7 @@ async function updateVideoWithError(videoId: string, errorMessage: string) {
         last_analyzed_at: new Date().toISOString()
       })
       .eq('id', videoId);
-    
+
     if (error) {
       console.error(`[DIRECT-ANALYSIS] Error updating video with error message:`, error);
     } else {
