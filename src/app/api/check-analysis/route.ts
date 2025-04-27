@@ -45,16 +45,16 @@ export async function POST(request: Request) {
     const isAnalysisComplete = video.frame_analysis && video.frame_analysis !== 'Analysis in progress...';
     const isAnalysisFailed = video.frame_analysis && video.frame_analysis.startsWith('Analysis failed:');
 
-    // If analysis has been in progress for more than 5 minutes, consider it failed
+    // If analysis has been in progress for more than 15 minutes, consider it failed
     let isAnalysisStuck = false;
     if (video.frame_analysis === 'Analysis in progress...' && video.last_analyzed_at) {
       const lastAnalyzedAt = new Date(video.last_analyzed_at);
       const now = new Date();
       const timeDiffMinutes = (now.getTime() - lastAnalyzedAt.getTime()) / (1000 * 60);
-      
-      if (timeDiffMinutes > 5) {
+
+      if (timeDiffMinutes > 15) {
         isAnalysisStuck = true;
-        
+
         // Update the video with an error message
         await supabase
           .from('tiktok_videos')
@@ -63,8 +63,10 @@ export async function POST(request: Request) {
             last_analyzed_at: new Date().toISOString()
           })
           .eq('id', videoId);
-          
+
         console.log(`[CHECK-ANALYSIS] Analysis for video ${videoId} has been stuck for ${timeDiffMinutes.toFixed(2)} minutes, marking as failed`);
+      } else {
+        console.log(`[CHECK-ANALYSIS] Analysis for video ${videoId} has been in progress for ${timeDiffMinutes.toFixed(2)} minutes, still waiting...`);
       }
     }
 
@@ -84,10 +86,10 @@ export async function POST(request: Request) {
       isAnalysisFailed,
       isAnalysisStuck
     });
-    
+
   } catch (error: any) {
     console.error('[CHECK-ANALYSIS] Unexpected error:', error);
-    
+
     return NextResponse.json(
       { error: 'An unexpected error occurred', details: error.message || 'Unknown error' },
       { status: 500 }
