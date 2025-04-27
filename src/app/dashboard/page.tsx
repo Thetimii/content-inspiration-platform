@@ -452,9 +452,9 @@ export default function Dashboard() {
 
       console.log(`Analyzing video ID: ${videoId}`);
 
-      // Using the new clean tiktok-analysis API
-      console.log('Calling tiktok-analysis API for video:', videoId);
-      const response = await fetch('/api/tiktok-analysis', {
+      // Using the direct-video-analysis API that follows the video analyzer project approach
+      console.log('Calling direct-video-analysis API for video:', videoId);
+      const response = await fetch('/api/direct-video-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -528,9 +528,9 @@ export default function Dashboard() {
 
           console.log(`Analyzing video ID: ${video.id}`);
 
-          // Using the new clean tiktok-analysis API
-          console.log('Calling tiktok-analysis API for video:', video.id);
-          const response = await fetch('/api/tiktok-analysis', {
+          // Using the direct-video-analysis API that follows the video analyzer project approach
+          console.log('Calling direct-video-analysis API for video:', video.id);
+          const response = await fetch('/api/direct-video-analysis', {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',

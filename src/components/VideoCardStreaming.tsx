@@ -174,8 +174,8 @@ export default function VideoCardStreaming({ video, userId, onAnalysisComplete }
       setIsAnalyzing(true);
       setAnalysisStatus('starting');
 
-      // First, start the analysis process
-      const response = await fetch('/api/tiktok-analysis', {
+      // First, start the analysis process using the direct-video-analysis API
+      const response = await fetch('/api/direct-video-analysis', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
