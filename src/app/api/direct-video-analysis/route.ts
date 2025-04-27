@@ -288,7 +288,7 @@ Be specific and detailed in your analysis.`;
         messages: [
           {
             role: "system",
-            content: [{ text: "You are a helpful assistant that analyzes TikTok videos in detail." }]
+            content: [{ text: "You are a helpful assistant that analyzes video content." }]
           },
           {
             role: "user",
@@ -335,24 +335,22 @@ Be specific and detailed in your analysis.`;
         }
       }, null, 2));
 
-      // Make the API call to DashScope - using the exact endpoint from the video analyzer project
+      // Make the API call to DashScope - using the exact endpoint and format from the video analyzer project
+      console.log('Making API call to DashScope with video URL:', supabaseVideoUrl);
+
       const response = await axios.post(
         'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
         requestBody,
         {
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${dashscopeApiKey}`
+          },
           timeout: 180000 // 3 minutes timeout for video processing
         }
       );
 
-      console.log('[DIRECT-ANALYSIS] Received response from DashScope API');
-      console.log('[DIRECT-ANALYSIS] Response status:', response.status);
-      console.log('[DIRECT-ANALYSIS] Response headers:', JSON.stringify(response.headers, null, 2));
-      console.log('[DIRECT-ANALYSIS] Response data structure:', JSON.stringify({
-        output: response.data?.output ? { text: response.data.output.text ? 'Text present' : 'Text missing' } : 'Output missing',
-        request_id: response.data?.request_id || 'Missing',
-        usage: response.data?.usage || 'Missing'
-      }, null, 2));
+      console.log('Received response from DashScope API');
 
       // Extract the analysis from the response using the format from the video analyzer project
       const analysis = response.data?.output?.text || '';
@@ -364,8 +362,8 @@ Be specific and detailed in your analysis.`;
         return;
       }
 
-      console.log('[DIRECT-ANALYSIS] Analysis received, length:', analysis.length);
-      console.log('[DIRECT-ANALYSIS] Analysis preview:', analysis.substring(0, 100) + '...');
+      console.log('Analysis received, length:', analysis.length);
+      console.log('Analysis preview:', analysis.substring(0, 100) + '...');
 
       // Update the video with the analysis
       const updateData = {
