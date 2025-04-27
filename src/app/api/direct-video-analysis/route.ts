@@ -303,9 +303,34 @@ Be specific and detailed in your analysis.`;
       'Authorization': `Bearer ${dashscopeApiKey.trim()}`
     };
 
-    console.log('[DIRECT-ANALYSIS] Making API call to DashScope with video URL:', videoUrl);
+    console.log('[DIRECT-ANALYSIS] Making API call to DashScope with video URL:', supabaseVideoUrl);
 
     try {
+      console.log('[DIRECT-ANALYSIS] Preparing to make API call to DashScope');
+      console.log('[DIRECT-ANALYSIS] Request URL: https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation');
+      console.log('[DIRECT-ANALYSIS] Request headers:', JSON.stringify({
+        'Content-Type': headers['Content-Type'],
+        'Authorization': 'Bearer [REDACTED]'
+      }, null, 2));
+      console.log('[DIRECT-ANALYSIS] Request body structure:', JSON.stringify({
+        model: requestBody.model,
+        input: {
+          messages: [
+            {
+              role: "system",
+              content: [{ text: "..." }]
+            },
+            {
+              role: "user",
+              content: [
+                { video: "...[video URL redacted]...", fps: requestBody.input.messages[1].content[0].fps },
+                { text: "...[prompt redacted]..." }
+              ]
+            }
+          ]
+        }
+      }, null, 2));
+
       // Make the API call to DashScope - using the exact endpoint from the video analyzer project
       const response = await axios.post(
         'https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation',
@@ -318,13 +343,19 @@ Be specific and detailed in your analysis.`;
 
       console.log('[DIRECT-ANALYSIS] Received response from DashScope API');
       console.log('[DIRECT-ANALYSIS] Response status:', response.status);
-      console.log('[DIRECT-ANALYSIS] Response data:', JSON.stringify(response.data, null, 2));
+      console.log('[DIRECT-ANALYSIS] Response headers:', JSON.stringify(response.headers, null, 2));
+      console.log('[DIRECT-ANALYSIS] Response data structure:', JSON.stringify({
+        output: response.data?.output ? { text: response.data.output.text ? 'Text present' : 'Text missing' } : 'Output missing',
+        request_id: response.data?.request_id || 'Missing',
+        usage: response.data?.usage || 'Missing'
+      }, null, 2));
 
       // Extract the analysis from the response using the format from the video analyzer project
       const analysis = response.data?.output?.text || '';
 
       if (!analysis || analysis.length < 10) {
         console.error('[DIRECT-ANALYSIS] Empty or too short analysis received');
+        console.error('[DIRECT-ANALYSIS] Full response data:', JSON.stringify(response.data, null, 2));
         await updateVideoWithError(videoId, 'The AI model returned an empty or too short analysis');
         return;
       }
@@ -355,21 +386,53 @@ Be specific and detailed in your analysis.`;
 
     } catch (error: any) {
       console.error('[DIRECT-ANALYSIS] Error analyzing video with DashScope:', error);
+      console.error('[DIRECT-ANALYSIS] Error stack:', error.stack);
+
+      let errorMessage = error.message || 'Unknown error';
 
       if (error.response) {
-        console.error('[DIRECT-ANALYSIS] Response data:', JSON.stringify(error.response.data, null, 2));
         console.error('[DIRECT-ANALYSIS] Response status:', error.response.status);
+        console.error('[DIRECT-ANALYSIS] Response headers:', JSON.stringify(error.response.headers, null, 2));
+
+        try {
+          console.error('[DIRECT-ANALYSIS] Response data:', JSON.stringify(error.response.data, null, 2));
+          if (error.response.data && error.response.data.error) {
+            errorMessage = `API Error: ${error.response.data.error.message || error.response.data.error}`;
+          }
+        } catch (jsonError) {
+          console.error('[DIRECT-ANALYSIS] Error stringifying response data:', jsonError);
+          console.error('[DIRECT-ANALYSIS] Raw response data:', error.response.data);
+        }
       } else if (error.request) {
         console.error('[DIRECT-ANALYSIS] No response received from server');
+        errorMessage = 'No response received from DashScope API (timeout or network issue)';
       } else {
         console.error('[DIRECT-ANALYSIS] Error setting up request:', error.message);
       }
 
-      await updateVideoWithError(videoId, `Error analyzing video: ${error.message || 'Unknown error'}`);
+      await updateVideoWithError(videoId, `Error analyzing video: ${errorMessage}`);
     }
   } catch (error: any) {
     console.error('[DIRECT-ANALYSIS] Unexpected error in background analysis:', error);
-    await updateVideoWithError(videoId, 'An unexpected error occurred during analysis');
+    console.error('[DIRECT-ANALYSIS] Error stack:', error.stack);
+
+    // Get more detailed error information
+    let errorDetails = 'Unknown error';
+    if (error.message) {
+      errorDetails = error.message;
+    }
+    if (error.response) {
+      errorDetails += ' | Response status: ' + error.response.status;
+      if (error.response.data) {
+        try {
+          errorDetails += ' | Response data: ' + JSON.stringify(error.response.data);
+        } catch (e) {
+          errorDetails += ' | Response data available but not stringifiable';
+        }
+      }
+    }
+
+    await updateVideoWithError(videoId, `Analysis error: ${errorDetails}`);
   } finally {
     // Clean up the temporary file
     if (fileKey) {
